@@ -1,0 +1,35 @@
+mcu_pin,port,net,function
+1,VBAT,+3.3V,power
+5,PD0,HEXT_IN,8MHz crystal in
+6,PD1,HEXT_OUT,8MHz crystal out
+7,NRST,NRST,reset (4K7 pullup + 100nF)
+14,PA0,SEL,floppy drive-select in (active low from host)
+15,PA1,STEP,floppy step pulse in
+16,PA2,RB,strap RB (0R link to GND)
+23,PA7,RDATA_3V3,read-data feedback / timing
+26,PB0,DIR,floppy step-direction in
+27,PB1,RC,strap RC (0R link to GND)
+29,PB10,I2C2_DTA,LED red + display SDA (J7)
+30,PB11,I2C2_CLK,display SCL (J7)
+33,PB12,SPI2_SS,SST25VF016B CE#
+34,PB13,SPI2_SCK,SST25VF016B SCK
+35,PB14,SPI2_MISO,SST25VF016B SO
+36,PB15,SPI2_MOSI,SST25VF016B SI
+37,PC6,RA,strap RA (0R link to GND)
+38,PC7,BUT_L,left button WRITE-mode (active low)
+39,PC8,BUT_R,right button NEXT-page (active low)
+41,PA8,WDATA,floppy write-data in from host
+42,PA9,USART1_TX,debug UART TX (J3)
+43,PA10,USART1_RX,debug UART RX (J4)
+44,PA11,USB_DM,USB D- via 22R (host port)
+45,PA12,USB_DP,USB D+ via 22R (host port)
+46,PA13,SWDIO,debug (J10)
+49,PA14,SWCLK,debug (J10)
+55,PB3,READY_3V3,floppy READY out (->U1E->Q4->P1.8)
+56,PB4,SIDE1,floppy side-select in
+57,PB5,WPROT_3V3,floppy WRITE-PROTECT out (->U1D->Q3->P1.22)
+58,PB6,TRK0_3V3,floppy TRACK0 out (->U1C->Q2->P1.20)
+59,PB7,DSKCHG_3V3,floppy DISK-CHANGE out (->U1F->Q6->P1.6)
+60,BOOT0,J3_BOOT0,boot select (4K7 pulldown)
+61,PB8,INDEX_3V3,floppy INDEX out (->U1A->Q1->P1.2)
+62,PB9,WGATE,floppy write-gate in from host

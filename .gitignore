@@ -1,0 +1,26 @@
+# Build output
+firmware/build/
+
+# Bench data (flash dumps, scope captures, logs)
+captures/
+
+# Third-party material: obtain separately (see README.md)
+Datasheets/
+Instructions/
+Schematics/
+scope firmware/
+Artery_ISP_Programmer_*/
+reference/
+
+# Python / editors / OS
+__pycache__/
+*.pyc
+.vscode/
+*.swp
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# manual sources (template, derived fonts, figures cropped from the Tektronix
+# scan, build script) stay local; only the built PDF in docs/manual/ is published
+/manual/

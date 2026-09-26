@@ -1,0 +1,22 @@
+# Normalise line endings in the repository (LF), convert on checkout as usual.
+* text=auto
+
+# Windows scripts keep CRLF in the working tree
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+
+# Makefiles and shell-ish configs must stay LF
+Makefile text eol=lf
+*.cfg text eol=lf
+*.ld text eol=lf
+
+# Binary
+*.bin binary
+*.hex text
+# released images are stored byte for byte, so their published SHA-256 holds
+release/*.hex binary
+*.img binary
+*.pdf binary
+*.png binary
+*.zip binary
+*.stl binary
