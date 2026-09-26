@@ -2,7 +2,9 @@
 
 Clean-room replacement firmware for the SFR1M44-DU26 USB floppy emulator
 (Artery **AT32F415**, PCB SFRC2D.B, 26-pin slim floppy connector) as fitted to
-Tektronix TDS 500/600/700-series oscilloscopes. These units are commonly sold
+Tektronix TDS 500/600/700-series oscilloscopes. The exact model:
+[SFR1M44-DU26 on the manufacturer's website](https://gotekemulator.com/product/SFR1M44-DU26-Gotek-Floppy-Drive-to-USB-Emulator.html). Before flashing, check the
+board is an SFRC2D.B with an AT32F415 ([docs/01](docs/01-hardware.md)). These units are commonly sold
 under the Gotek name; this is an independent project, not affiliated with or
 endorsed by that brand or the original firmware's authors, and it contains none
 of their code.
