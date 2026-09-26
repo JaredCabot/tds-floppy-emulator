@@ -64,6 +64,21 @@ other position of the same three-pin header), JE and JD off. Details: the
 manual (*Set the Jumper*, Table 2-2) and [docs/01](docs/01-hardware.md);
 buttons, LED and transfers: [docs/11-usb.md](docs/11-usb.md).
 
+## Other devices
+Nothing in the firmware is specific to the TDS beyond its settings, so it
+should also work in other devices that use this emulator (or a 26-pin slim
+floppy drive) with **1.44 MB PC-format (FAT12) disks**. What a device needs:
+
+- a 1.44 MB high-density drive: the firmware emulates no other size (no
+  720 KB, so jumper JE is not supported);
+- the drive signals as the TDS uses them: DISK CHANGE on pin 6, READY on
+  pin 8, drive select on the S1 jumper position;
+- for DATA IN and DATA OUT, a FAT12 disk: a device that writes its own disk
+  format can still use the emulator as a drive, but not the USB transfers.
+
+It has only been tested on the TDS 794D and TDS 784D. Reports from other
+devices, working or not, are welcome as GitHub issues.
+
 ## Improvements over the stock firmware
 - The left button can copy out **everything** on the internal disk (stock could
   not copy out data on internal memory that was saved before the USB was
