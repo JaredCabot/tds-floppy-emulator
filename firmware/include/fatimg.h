@@ -27,6 +27,10 @@
 #define FATIMG_MAX_FILES    224u        /* root entries on a 1.44 MB disk */
 #define FATIMG_DATA_CLUSTERS 2847u      /* 1.44 MB: 2880 sectors - 33 (boot, 2 FATs, root) */
 #define FATIMG_DATA_BYTES   (FATIMG_DATA_CLUSTERS * FATIMG_SECTOR)   /* largest file */
+#define FATIMG_DD_CLUSTERS  713u        /* 720 KB: (1440 - 14) / 2 */
+#define FATIMG_DD_BYTES     (FATIMG_DD_CLUSTERS * 2u * FATIMG_SECTOR)
+/* The largest file a disk of that density holds. */
+static inline uint32_t fatimg_capacity(bool dd) { return dd ? FATIMG_DD_BYTES : FATIMG_DATA_BYTES; }
 
 typedef struct {
   void (*read)(uint32_t lba, uint8_t buf[FATIMG_SECTOR], void *ctx);
@@ -44,9 +48,11 @@ typedef struct {
   uint16_t ext_cl[FATIMG_MAX_FILES];   /* committed extents: first cluster */
   uint16_t ext_n[FATIMG_MAX_FILES];    /* ... and cluster count */
   char     names[FATIMG_MAX_FILES][11];/* committed names (uniqueness checks) */
+  bool     dd;                         /* building a 720 KB DD volume */
 } fatimg_build_t;
 
-void fatimg_build_begin(fatimg_build_t *b, const fatimg_io_t *io);
+/* dd: build a 720 KB DD volume (2 sectors per cluster) instead of 1.44 MB HD. */
+void fatimg_build_begin(fatimg_build_t *b, const fatimg_io_t *io, bool dd);
 /* Would a file of size bytes still fit (clusters and a directory slot)? */
 bool fatimg_fits(const fatimg_build_t *b, uint32_t size);
 /* Reserve space; *first_lba = where to program the data (sequential LBAs). */
@@ -71,6 +77,7 @@ bool fatimg_short_name(const char *name, unsigned n, char name83[11]);
 typedef struct {
   fatimg_io_t io;
   uint16_t fat_lba, root_lba, root_entries, data_lba, max_cl;
+  uint8_t  spc, media;                 /* sectors per cluster (1 HD, 2 DD), media byte */
   uint16_t dir_index;                  /* iterator position */
   uint32_t cache_lba;                  /* sector cache for FAT/dir reads */
   uint8_t  cache[FATIMG_SECTOR];
@@ -110,6 +117,15 @@ bool fatimg_dir_next(fatimg_read_t *r, fatimg_dir_t *d, fatimg_file_t *f);
 /* Clusters in the chain from first_cl, counting at most limit (loop guard). A
  * file of size bytes is intact only if this reaches its cluster count. */
 uint32_t fatimg_chain_len(fatimg_read_t *r, uint16_t first_cl, uint32_t limit);
+
+/* A file's data, sector by sector (clusters may hold 1 or 2 sectors): start,
+ * then each call gives the next sector's LBA and how many of its bytes belong
+ * to the file; 0 at the end. p->left != 0 afterwards: the chain was short. */
+typedef struct { uint16_t cl; uint8_t k; uint32_t left; } fatimg_pos_t;
+void fatimg_pos_start(fatimg_pos_t *p, const fatimg_file_t *f);
+uint32_t fatimg_pos_next(fatimg_read_t *r, fatimg_pos_t *p, uint32_t *lba);
+/* Clusters a file of size bytes needs on this volume. */
+uint32_t fatimg_clusters_for(const fatimg_read_t *r, uint32_t size);
 
 /* Next cluster in the chain, or 0 at end / on a corrupt entry. */
 uint16_t fatimg_next_cluster(fatimg_read_t *r, uint16_t cl);

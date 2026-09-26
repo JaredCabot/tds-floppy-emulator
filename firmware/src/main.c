@@ -172,6 +172,11 @@ int main(void)
       if(n) spiflash_program(dbg_flash_addr, (const void *)dbg_flash_buf, n);
       dbg_flash_req = 0;
     }
+    if(dbg_flash_req == 6 && unlocked)     /* test hook: set the disk's density (addr 0 HD, 1 DD) */
+    {
+      flpy_set_density(dbg_flash_addr != 0);
+      dbg_flash_req = 0;
+    }
     if(dbg_flash_req == 4 || (dbg_flash_req == 3 && unlocked))
     {
       dbg_name[sizeof dbg_name - 1] = 0;

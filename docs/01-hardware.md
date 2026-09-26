@@ -100,12 +100,12 @@ firmware sees only the internal select net SEL (PA0, also the green LED).
 |---|---|---|---|
 | **S1** | MO1 1-2 | SEL driven by the interface's DRIVE SELECT line | Required for the TDS; tested |
 | **MO** | MO1 2-3 | SEL driven by MOTOR ON instead (hosts that enable a drive by motor-on alone) | Works without firmware changes (SEL is SEL), untested, not needed on the TDS; the green LED then follows motor-on |
-| **JE** | JE1 1-2 | HD OUT tied to GND: tells the host "2DD (720 KB)" | **Not supported**: the firmware only presents a 1.44 MB HD disk (500 kbit/s, 18 sectors/track). Leave off (HD OUT then floats high: "2HD") |
+| **JE** | JE1 1-2 | HD OUT tied to GND: tells the host "2DD (720 KB)" | **Supported from 1.1.0.** Off: 1.44 MB HD disks (HD OUT floats high). Fitted: 720 KB DD; the disk becomes DD when the host formats it (docs/10). The MCU cannot read this jumper: pin 9 goes only to a 1 k pull-up and JE |
 | **JD** | JD1 1-2 | DINST ("disk installed") tied to GND permanently | Not used by the TDS, which detects the disk through READY and DISK CHANGE (driven by the firmware, "no disk" during transfers); a permanent "disk installed" would contradict that. Leave off |
 
 MO1 is one 3-pin header: pin 2 (SEL) is common, so S1 and MO are the two
-positions of the same jumper. The connector pin DINST reaches is not traced
-here (the TEAC spec's unused pins are 7, 11 and 13).
+positions of the same jumper. DINST is connector pin 11 (MTRON pin 10, HD OUT
+pin 9), each with a 1 k pull-up to 5 V (schematic, traced 2026-09-27).
 
 ## Memory budget - the central constraint
 - 32 KB SRAM total. A full 1.44 MB floppy image does **not** fit in RAM.

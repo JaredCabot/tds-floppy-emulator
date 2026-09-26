@@ -16,19 +16,19 @@ static void put16(uint8_t *p, uint16_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(
 static void put32(uint8_t *p, uint32_t v)
 { p[0]=(uint8_t)v; p[1]=(uint8_t)(v>>8); p[2]=(uint8_t)(v>>16); p[3]=(uint8_t)(v>>24); }
 
-static void boot_sector(uint8_t *s, const char *label)
+static void boot_sector(uint8_t *s, bool dd, const char *label)
 {
   s[0]=0xEB; s[1]=0x3C; s[2]=0x90;               /* jump */
   memcpy(&s[3], "MSDOS5.0", 8);                  /* OEM name */
   put16(&s[11], 512);       /* bytes/sector    */
-  s[13]=1;                  /* sectors/cluster */
+  s[13]=dd ? 2 : 1;         /* sectors/cluster */
   put16(&s[14], 1);         /* reserved sectors*/
   s[16]=NUM_FATS;           /* num FATs        */
-  put16(&s[17], 224);       /* root entries    */
-  put16(&s[19], 2880);      /* total sectors 16*/
-  s[21]=0xF0;               /* media descriptor*/
-  put16(&s[22], 9);         /* sectors/FAT     */
-  put16(&s[24], 18);        /* sectors/track   */
+  put16(&s[17], dd ? 112 : 224);   /* root entries */
+  put16(&s[19], dd ? 1440 : 2880); /* total sectors 16 */
+  s[21]=dd ? 0xF9 : 0xF0;   /* media descriptor*/
+  put16(&s[22], dd ? 3 : 9);  /* sectors/FAT     */
+  put16(&s[24], dd ? 9 : 18); /* sectors/track   */
   put16(&s[26], 2);         /* heads           */
   put32(&s[28], 0);         /* hidden sectors  */
   put32(&s[32], 0);         /* total sectors 32*/
@@ -44,7 +44,7 @@ void fat12_blank_sector(uint32_t lba, uint8_t out[FAT12_SECTOR_SIZE], const char
 {
   memset(out, 0, FAT12_SECTOR_SIZE);
 
-  if(lba == 0) { boot_sector(out, label); return; }
+  if(lba == 0) { boot_sector(out, false, label); return; }
 
   /* first sector of each FAT holds the reserved cluster entries F0 FF FF */
   if(lba == FAT_START || lba == FAT_START + FAT_SECTORS)
@@ -62,4 +62,10 @@ void fat12_blank_sector(uint32_t lba, uint8_t out[FAT12_SECTOR_SIZE], const char
   }
 
   /* everything else (rest of FATs, root, all data) is zero-filled */
+}
+
+void fat12_boot_sector(uint8_t out[FAT12_SECTOR_SIZE], bool dd, const char *label)
+{
+  memset(out, 0, FAT12_SECTOR_SIZE);
+  boot_sector(out, dd, label);
 }

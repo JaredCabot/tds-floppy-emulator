@@ -30,6 +30,18 @@
 #define MFM_TRACK_DATA_BYTES   12500u
 #define MFM_TRACK_MAX_BYTES    25600u  /* encoded (2 bytes per data byte) + headroom */
 
+/* Track geometry. HD (1.44 MB) and DD (720 KB) share 300 RPM, 512-byte
+ * sectors, the lead-in (gap4a, IAM, gap1) and the sector field layout; DD runs
+ * at half the data rate (250 kbit/s: 6250 bytes per revolution) with 9 sectors
+ * and the standard 720 KB gap3 of 80. The MFM_* constants above are the HD
+ * (largest) case, for sizing buffers. */
+typedef struct {
+  uint8_t  sectors;         /* per track */
+  uint16_t track_bytes;     /* data bytes per revolution */
+  uint16_t stride;          /* sector stride: ID 22 + gap2 22 + data 530 + gap3 */
+} mfm_geom_t;
+extern const mfm_geom_t mfm_geom_hd, mfm_geom_dd;
+
 /* CRC-CCITT over len bytes, given a running crc (start 0xFFFF). */
 uint16_t mfm_crc_ccitt(uint16_t crc, const uint8_t *data, size_t len);
 
@@ -44,9 +56,10 @@ typedef struct {
   const uint8_t  *data;     /* MFM_TRACK_SIZE bytes: sectors 1..18 in order */
   const uint16_t *dcrc;     /* 18 data-field CRCs (mfm_data_crc) */
   bool hide;                /* true: no address marks at all (track not ready) */
+  const mfm_geom_t *g;      /* geometry; NULL = HD */
 } mfm_track_t;
 
-/* Byte p (0 .. MFM_TRACK_DATA_BYTES-1) of the track: *val, and *sync =
+/* Byte p (0 .. geometry track_bytes - 1) of the track: *val, and *sync =
  * MFM_PLAIN / MFM_SYNC_A1 / MFM_SYNC_C2 (missing-clock mark). */
 void mfm_track_byte(const mfm_track_t *t, unsigned p, uint8_t *val, uint8_t *sync);
 

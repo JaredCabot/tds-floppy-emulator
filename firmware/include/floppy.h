@@ -37,6 +37,12 @@ void flpy_poll(void);
  * drive: it waits for 1.5 s of host inactivity, at most 15 s. */
 /* Milliseconds since boot (SysTick); runs during blocking transfers too. */
 extern volatile uint32_t flpy_dbg_ms;
+/* Disk density, 720 KB DD or 1.44 MB HD: a property of the disk (buffer.h).
+ * The drive follows it; a write at the other data rate (the host's density
+ * line, jumper JE, says the other) switches it, as formatting a real disk in
+ * the other density would. docs/10. */
+void flpy_set_density(bool dd);
+bool flpy_is_dd(void);
 bool flpy_eject(bool (*abort)(void));   /* abort (may be NULL): stop waiting early */
 void flpy_insert(void);
 /* No disk at all, at once (boot: the buffer flash failed its self-test). */

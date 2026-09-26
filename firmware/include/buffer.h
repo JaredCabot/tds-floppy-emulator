@@ -48,6 +48,12 @@
 #define BUF_JOURNALS      3u
 #define BUF_META_ADDR     0x1EF000u
 
+/* Density of the disk image: 720 KB DD (9 sectors per track) or 1.44 MB HD
+ * (18). Recorded in the meta sector; survives power-off, rebuilds and marker
+ * repairs. buffer_set_density: the disk is being reformatted at the other one. */
+bool buffer_is_dd(void);
+void buffer_set_density(bool dd);
+
 /* Boot: restore a track whose write-back was cut short (journal); format to an
  * empty FAT12 volume if no complete image is present. */
 void buffer_init(void);

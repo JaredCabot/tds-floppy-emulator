@@ -217,8 +217,43 @@ static void test_marker_damage(void)
         "a rebuild cut short (no sound volume) is still formatted");
 }
 
+/* the disk's density (720 KB DD / 1.44 MB HD) is recorded, survives power
+ * cycles, rebuilds and marker repairs, maps 9 sectors per track, and can be
+ * switched back, keeping a recorded fault */
+static void test_density(void)
+{
+  extern volatile uint32_t buffer_dbg_marker_repaired;
+  static uint8_t s[512];
+  memset(g_flash, 0xFF, sizeof g_flash);
+  reboot();
+  CHECK(!buffer_is_dd(), "a new disk is HD");
+  buffer_set_density(true);
+  CHECK(memcmp(&g_flash[BUF_META_ADDR + 32u], "TDSDD720", 8) == 0, "DD is recorded in the meta sector");
+  reboot();
+  CHECK(buffer_is_dd(), "DD survives a power cycle");
+  buffer_format();                             /* a rebuild (DATA IN / after DATA OUT) */
+  reboot();
+  buffer_read_lba(0, s);
+  CHECK(buffer_is_dd() && s[13] == 2 && s[21] == 0xF9 && (s[19] | s[20] << 8) == 1440,
+        "a rebuild keeps DD and writes a 720 KB volume");
+  buffer_read_lba(9, s);
+  CHECK(memcmp(s, &g_flash[BUF_SLOT_SIZE], 512) == 0, "DD: LBA 9 is the first sector of track 1 (9 per track)");
+  g_flash[BUF_META_ADDR] &= 0x00;              /* damaged marker on a sound DD disk */
+  uint32_t before = buffer_dbg_marker_repaired;
+  reboot();
+  CHECK(buffer_dbg_marker_repaired == before + 1 && buffer_is_dd(), "a marker repair keeps DD");
+  memcpy(&g_flash[BUF_META_ADDR + 64u], "TDSFAULT", 8);   /* a recorded fault */
+  reboot();
+  buffer_set_density(false);                   /* the disk is being formatted HD again */
+  reboot();
+  CHECK(!buffer_is_dd() && memcmp(&g_flash[BUF_META_ADDR], "TDSFBUF2", 8) == 0,
+        "switching back to HD rewrites the meta sector: HD, marker intact");
+  CHECK(buffer_fault(), "... and keeps the recorded fault");
+}
+
 int main(void)
 {
+  test_density();
   test_marker_damage();
   test_power_cuts();
   test_bad_sector();

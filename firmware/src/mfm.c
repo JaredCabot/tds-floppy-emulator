@@ -64,8 +64,16 @@ uint16_t mfm_data_crc(const uint8_t sector[MFM_SECTOR_SIZE])
   return mfm_crc_ccitt(mfm_crc_ccitt(0xFFFF, hdr, 4), sector, MFM_SECTOR_SIZE);
 }
 
+const mfm_geom_t mfm_geom_hd = { 18u, 12500u, 658u };   /* gap3 84 */
+const mfm_geom_t mfm_geom_dd = {  9u,  6250u, 654u };   /* gap3 80 */
+_Static_assert(146u + 18u * 658u <= 12500u, "HD track fits a revolution");
+_Static_assert(146u + 9u * 654u <= 6250u, "DD track fits a revolution");
+
+static const mfm_geom_t *geom(const mfm_track_t *t) { return t->g ? t->g : &mfm_geom_hd; }
+
 /* ================================================================
- * Track layout (data-byte offsets), 12500 bytes:
+ * Track layout (data-byte offsets), HD shown (DD: 9 sectors, stride 654,
+ * gap3 80, 6250 bytes):
  *   0..79    gap4a 4E        80..91 sync 00     92..94 C2* (IAM)   95 FC
  *   96..145  gap1 4E
  *   per sector s at base = 146 + 658*s:
@@ -86,9 +94,10 @@ void mfm_track_byte(const mfm_track_t *t, unsigned p, uint8_t *val, uint8_t *syn
     if(p < 95)            { *val = 0xC2; *sync = t->hide ? MFM_PLAIN : MFM_SYNC_C2; return; }
     *val = 0xFC; return;
   }
+  const mfm_geom_t *g = geom(t);
   unsigned q = p - MFM_TRACK_PRE;
-  unsigned s = q / MFM_SECTOR_STRIDE, o = q % MFM_SECTOR_STRIDE;
-  if(s >= MFM_SECTORS_PER_TRACK) { *val = 0x4E; return; }       /* gap4b */
+  unsigned s = q / g->stride, o = q % g->stride;
+  if(s >= g->sectors) { *val = 0x4E; return; }                    /* gap4b */
 
   if(o < 12 || (o >= 44 && o < 56)) { *val = 0x00; return; }
   if(o < 15 || (o >= 56 && o < 59))
@@ -140,9 +149,10 @@ uint16_t mfm_encode_byte(uint8_t val, uint8_t sync, int *prev)
 
 size_t mfm_encode_track(const mfm_track_t *t, uint8_t *out, size_t out_cap)
 {
-  if(out_cap < 2u * MFM_TRACK_DATA_BYTES) return 0;
+  unsigned bytes = geom(t)->track_bytes;
+  if(out_cap < 2u * bytes) return 0;
   int prev = 0;
-  for(unsigned p = 0; p < MFM_TRACK_DATA_BYTES; p++)
+  for(unsigned p = 0; p < bytes; p++)
   {
     uint8_t v, sy;
     mfm_track_byte(t, p, &v, &sy);
@@ -150,7 +160,7 @@ size_t mfm_encode_track(const mfm_track_t *t, uint8_t *out, size_t out_cap)
     out[2 * p] = (uint8_t)(w >> 8);
     out[2 * p + 1] = (uint8_t)w;
   }
-  return 2u * MFM_TRACK_DATA_BYTES;
+  return 2u * bytes;
 }
 
 /* ================================================================

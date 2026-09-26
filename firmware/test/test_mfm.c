@@ -37,7 +37,7 @@ static mfm_track_t make_track(uint8_t cyl, uint8_t head, bool hide)
       g_src[s*MFM_SECTOR_SIZE + i] = (uint8_t)(s*7 + i*3 + 0x11 + cyl);
     g_crc[s] = mfm_data_crc(&g_src[s * MFM_SECTOR_SIZE]);
   }
-  mfm_track_t t = { cyl, head, g_src, g_crc, hide };
+  mfm_track_t t = { cyl, head, g_src, g_crc, hide, NULL };
   return t;
 }
 
@@ -243,7 +243,7 @@ static void test_fatimg(void)
   memset(g_img, 0xFF, sizeof g_img);               /* erased flash */
   g_overwrites = 0;
 
-  fatimg_build_begin(&b, &io);
+  fatimg_build_begin(&b, &io, false);
   for(unsigned f = 0; f < nf; f++)
   {
     uint32_t lba;
@@ -290,7 +290,7 @@ static void test_fatimg(void)
   CHECK(!fatimg_is_empty(&io), "is_empty false with files");
 
   /* capacity: 2847 clusters; a full disk must refuse the next file */
-  fatimg_build_begin(&b, &io);
+  fatimg_build_begin(&b, &io, false);
   uint32_t lba; unsigned n = 0;
   while(fatimg_alloc(&b, 100000, &lba)) n++;       /* 196 clusters each */
   printf("fatimg capacity: %u x 100000-byte files fit (expect 14)\n", n);
@@ -298,7 +298,7 @@ static void test_fatimg(void)
 
   /* empty image */
   memset(g_img, 0xFF, sizeof g_img);
-  fatimg_build_begin(&b, &io);
+  fatimg_build_begin(&b, &io, false);
   fatimg_finish(&b);
   CHECK(fatimg_is_empty(&io), "freshly built image is empty");
 
@@ -335,7 +335,7 @@ static void test_fatimg_dirs(void)
   static fatimg_build_t b;
   static fatimg_read_t r;
   memset(g_img, 0xFF, sizeof g_img);
-  fatimg_build_begin(&b, &io);
+  fatimg_build_begin(&b, &io, false);
   uint32_t lba;
   fatimg_alloc(&b, 10, &lba);
   fatimg_commit(&b, "ROOTFILETXT", 10, 0, 0);
@@ -393,7 +393,7 @@ static void test_fatimg_dirs(void)
   CHECK(!fatimg_is_empty(&io), "a disk with folders is not empty");
 
   memset(g_img, 0xFF, sizeof g_img);                    /* a folder alone is not empty either */
-  fatimg_build_begin(&b, &io); fatimg_finish(&b);
+  fatimg_build_begin(&b, &io, false); fatimg_finish(&b);
   dirent(root, "ONLYDIR    ", 0x10, 2000, 0);
   CHECK(!fatimg_is_empty(&io), "a disk holding only a folder is not empty");
 }
@@ -432,7 +432,7 @@ static void test_short_names(void)
   fatimg_io_t io = { img_read, img_prog, NULL };
   uint32_t lba;
   memset(g_img, 0xFF, sizeof g_img);
-  fatimg_build_begin(&b, &io);
+  fatimg_build_begin(&b, &io, false);
   fatimg_alloc(&b, 10, &lba);
   fatimg_commit(&b, "TEK000~1BMP", 10, 0, 0);
   CHECK(fatimg_name_used(&b, "TEK000~1BMP"), "committed name is reported as used");
@@ -560,6 +560,115 @@ static void test_buttons_resync(void)
   got = btn_hold(&c, LR, 3100) | btn_hold(&c, 0, 100);
   CHECK(got == BUTTON_UPDATE, "a deliberate 3 s two-button hold after a pause still updates");
 }
+/* 720 KB (DD) geometry: 9 sectors in 6250 bytes, same field layout */
+static void test_mfm_dd(void)
+{
+  mfm_track_t t = make_track(3, 1, false);
+  t.g = &mfm_geom_dd;
+  size_t n = mfm_encode_track(&t, g_mfm, sizeof g_mfm);
+  CHECK(n == 2u * 6250u, "DD track: 6250 data bytes per revolution");
+  static uint8_t back[MFM_TRACK_SIZE];
+  memset(back, 0, sizeof back);
+  int good = mfm_decode_verify(g_mfm, n, back);
+  CHECK(good == 9, "DD track: 9 sectors decode with good CRCs");
+  CHECK(memcmp(back, g_src, 9u * MFM_SECTOR_SIZE) == 0, "DD track: sector data round-trips");
+  uint8_t v, sy;
+  mfm_track_byte(&t, MFM_TRACK_PRE + 9u * 654u, &v, &sy);
+  CHECK(v == 0x4E && sy == MFM_PLAIN, "DD track: gap4b after the 9th sector");
+  mfm_track_byte(&t, MFM_TRACK_PRE + 8u * 654u + 18u, &v, &sy);
+  CHECK(v == 9, "DD track: the last ID field says sector 9");
+  mfm_track_t h = make_track(3, 1, false);        /* NULL geometry is still HD */
+  CHECK(mfm_encode_track(&h, g_mfm, sizeof g_mfm) == 2u * 12500u, "NULL geometry = HD");
+}
+
+/* 720 KB DD: build a volume (2 sectors per cluster), check its BPB and limits,
+ * read every file back through the sector iterator, and walk a folder entry in
+ * the SECOND sector of a folder cluster. */
+static const uint32_t dd_sizes[7] = { 0, 1, 512, 1024, 1025, 5000, 70000 };
+static uint8_t dd_data[70016], dd_got[70016];
+static void dd_fat_set(uint16_t cl, uint16_t v)        /* both 3-sector FATs */
+{
+  for(unsigned fat = 0; fat < 2; fat++)
+  {
+    uint8_t *p = &g_img[(1u + fat * 3u) * 512u + cl + cl / 2u];
+    if(cl & 1) { p[0] = (uint8_t)((p[0] & 0x0F) | (v << 4)); p[1] = (uint8_t)(v >> 4); }
+    else       { p[0] = (uint8_t)v; p[1] = (uint8_t)((p[1] & 0xF0) | ((v >> 8) & 0x0F)); }
+  }
+}
+static void test_fatimg_dd(void)
+{
+  fatimg_io_t io = { img_read, img_prog, NULL };
+  static fatimg_build_t b;
+  static fatimg_read_t r;
+  for(unsigned i = 0; i < sizeof dd_data; i++) dd_data[i] = (uint8_t)(i * 13u + (i >> 8));
+  memset(g_img, 0xFF, sizeof g_img);
+  fatimg_build_begin(&b, &io, true);
+  for(unsigned i = 0; i < 7; i++)
+  {
+    uint32_t lba;
+    CHECK(fatimg_alloc(&b, dd_sizes[i], &lba), "DD: file allocated");
+    for(uint32_t off = 0; off < dd_sizes[i]; off += 512)
+      img_prog(lba + off / 512, 0, dd_data + off + i, (dd_sizes[i] - off < 512) ? dd_sizes[i] - off : 512, NULL);
+    char n83[12];
+    snprintf(n83, sizeof n83, "DDFILE%u BIN", i);
+    fatimg_commit(&b, n83, dd_sizes[i], 0, 0);
+  }
+  fatimg_finish(&b);
+  const uint8_t *bs = g_img;
+  CHECK(bs[13] == 2 && bs[21] == 0xF9 && (bs[19] | bs[20] << 8) == 1440 && (bs[17] | bs[18] << 8) == 112
+        && bs[22] == 3 && bs[24] == 9 && bs[510] == 0x55, "DD: the BPB describes a 720 KB volume");
+  CHECK(fatimg_open(&r, &io) && r.spc == 2 && r.media == 0xF9 && r.data_lba == 14, "DD: the reader opens it (2 sectors per cluster)");
+  CHECK(fatimg_valid(&r, &io), "DD: fatimg_valid (media F9 at the start of both FATs)");
+  fatimg_open(&r, &io);
+  fatimg_file_t f;
+  unsigned nf = 0, bad = 0;
+  while(fatimg_next_file(&r, &f))
+  {
+    fatimg_pos_t p;
+    uint32_t lba, n, at = 0;
+    uint8_t sec[512];
+    fatimg_pos_start(&p, &f);
+    while((n = fatimg_pos_next(&r, &p, &lba)) != 0) { img_read(lba, sec, NULL); memcpy(dd_got + at, sec, n); at += n; }
+    unsigned i = (unsigned)(f.name83[6] - '0');
+    if(i > 6 || at != dd_sizes[i] || p.left || memcmp(dd_got, dd_data + i, at) != 0) bad++;
+    if(i <= 6 && fatimg_clusters_for(&r, dd_sizes[i]) != (dd_sizes[i] + 1023u) / 1024u) bad++;
+    nf++;
+  }
+  printf("fatimg DD: %u files read back, %u bad\n", nf, bad);
+  CHECK(nf == 7 && bad == 0, "DD: every file reads back, byte for byte, through the sector iterator");
+
+  fatimg_build_begin(&b, &io, true);             /* limits */
+  CHECK(fatimg_fits(&b, FATIMG_DD_BYTES) && !fatimg_fits(&b, FATIMG_DD_BYTES + 1u), "DD: capacity is 713 x 1 KB clusters");
+  unsigned k = 0;
+  uint32_t lba;
+  while(fatimg_fits(&b, 0) && k < 300) { char n83[12]; fatimg_alloc(&b, 0, &lba); snprintf(n83, sizeof n83, "E%07u   ", k++); fatimg_commit(&b, n83, 0, 0, 0); }
+  CHECK(k == 112, "DD: 112 root entries");
+
+  memset(g_img, 0xFF, sizeof g_img);             /* a folder whose entry is in its cluster's 2nd sector */
+  fatimg_build_begin(&b, &io, true);
+  fatimg_alloc(&b, 10, &lba); fatimg_commit(&b, "ROOTFILETXT", 10, 0, 0);
+  fatimg_finish(&b);
+  uint8_t *root = &g_img[7u * 512u];
+  dirent(root + 32, "SUBDD      ", 0x10, 300, 0);
+  uint8_t *c0 = &g_img[(14u + (300u - 2u) * 2u) * 512u];
+  for(unsigned i = 0; i < 16; i++) { dirent(c0 + i * 32, "GONE    TXT", 0x20, 0, 0); c0[i * 32] = 0xE5; }
+  memset(c0 + 512, 0, 512);
+  dirent(c0 + 512, "INNER2  TXT", 0x20, 0, 0);           /* entry 16: the 2nd sector' first */
+  dd_fat_set(300, 0xFFF);
+  fatimg_open(&r, &io);
+  fatimg_dir_t d[2];
+  int found = 0;
+  fatimg_dir_root(&d[0]);
+  while(fatimg_dir_next(&r, &d[0], &f))
+    if(f.attr & FATIMG_ATTR_DIR)
+    {
+      fatimg_dir_sub(&r, &d[1], f.first_cl);
+      fatimg_file_t g;
+      while(fatimg_dir_next(&r, &d[1], &g)) found += memcmp(g.name83, "INNER2  TXT", 11) == 0;
+    }
+  CHECK(found == 1, "DD: a folder entry in the second sector of a 2-sector cluster is found");
+}
+
 int main(void)
 {
   test_crc();
@@ -567,8 +676,10 @@ int main(void)
   test_write_decoder();
   test_fat12();
   test_testimg();
+  test_mfm_dd();
   test_fatimg();
   test_fatimg_dirs();
+  test_fatimg_dd();
   test_short_names();
   test_update_format();
   test_buttons();

@@ -34,6 +34,11 @@ static const char LEGACY_MARKER0[8] __attribute__((nonstring)) = "GTKBUF01";
 static const char FAULT_MARK[8] __attribute__((nonstring)) = "TDSFAULT";
 #define FAULT_ADDR  (BUF_META_ADDR + 64u)
 
+/* Present when the disk is a 720 KB DD disk (absent: 1.44 MB HD). */
+static const char DD_MARK[8] __attribute__((nonstring)) = "TDSDD720";
+#define DD_ADDR     (BUF_META_ADDR + 32u)
+static bool s_dd;
+
 /* SWD test hook: while it holds BUFFER_INJECT_FAIL, every track read-back
  * "fails" (the data is in fact written correctly), to exercise the give-up path
  * and the persistent fault without damaging the flash. */
@@ -60,8 +65,11 @@ static uint32_t slot_addr(unsigned t)    { return (uint32_t)t * BUF_SLOT_SIZE; }
 static uint32_t journal_addr(unsigned j) { return BUF_JOURNAL_ADDR + (uint32_t)j * BUF_SLOT_SIZE; }
 static uint32_t lba_addr(uint32_t lba)
 {
-  return slot_addr(lba / BUF_SECTORS_PER_TRACK) + (lba % BUF_SECTORS_PER_TRACK) * 512u;
+  unsigned spt = s_dd ? 9u : BUF_SECTORS_PER_TRACK;   /* a DD track uses its slot's first 4.5 KB */
+  return slot_addr(lba / spt) + (lba % spt) * 512u;
 }
+
+bool buffer_is_dd(void) { return s_dd; }
 
 void buffer_read_lba(uint32_t lba, uint8_t dst[512])  { spiflash_read(lba_addr(lba), dst, 512); }
 void buffer_program(uint32_t lba, unsigned off, const void *src, unsigned len)
@@ -217,7 +225,22 @@ void buffer_begin_rebuild(void)
 
 void buffer_end_rebuild(void)
 {
-  spiflash_program(BUF_META_ADDR, MARKER, sizeof MARKER);   /* last: image complete */
+  if(s_dd) spiflash_program(DD_ADDR, DD_MARK, sizeof DD_MARK);   /* density before the marker */
+  spiflash_program(BUF_META_ADDR, MARKER, sizeof MARKER);       /* last: image complete */
+}
+
+void buffer_set_density(bool dd)
+{
+  if(dd == s_dd) return;
+  buffer_wb_finish();
+  if(dd) spiflash_program(DD_ADDR, DD_MARK, sizeof DD_MARK);
+  else                                         /* the record can only be erased: redo the sector */
+  {
+    spiflash_erase_sector(BUF_META_ADDR);
+    if(s_fault) spiflash_program(FAULT_ADDR, FAULT_MARK, sizeof FAULT_MARK);
+    spiflash_program(BUF_META_ADDR, MARKER, sizeof MARKER);   /* last */
+  }
+  s_dd = dd;
 }
 
 /* fatimg I/O on the buffer */
@@ -231,7 +254,7 @@ void buffer_format(void)
   fatimg_build_t *b = flpy_scratch();          /* caller ejects the disk first */
   if(!b) return;
   buffer_begin_rebuild();
-  fatimg_build_begin(b, &buffer_fatimg_io);
+  fatimg_build_begin(b, &buffer_fatimg_io, s_dd);   /* the disk keeps its density */
   fatimg_finish(b);                            /* empty FAT12 volume */
   buffer_end_rebuild();
 }
@@ -315,9 +338,11 @@ static bool marker_ok(void)
 static void marker_repair(void)
 {
   bool fault = marker_at(FAULT_ADDR, FAULT_MARK);
+  bool dd = marker_at(DD_ADDR, DD_MARK);
   spiflash_erase_sector(BUF_META_ADDR);
-  spiflash_program(BUF_META_ADDR, MARKER, sizeof MARKER);
+  if(dd) spiflash_program(DD_ADDR, DD_MARK, sizeof DD_MARK);
   if(fault) spiflash_program(FAULT_ADDR, FAULT_MARK, sizeof FAULT_MARK);
+  spiflash_program(BUF_META_ADDR, MARKER, sizeof MARKER);
   buffer_dbg_marker_repaired++;
 }
 
@@ -336,6 +361,7 @@ void buffer_init(void)
     else { buffer_format(); return; }          /* no complete image: blank, or a rebuild cut short */
   }
   if(marker_at(FAULT_ADDR, FAULT_MARK)) s_fault = true;   /* a fault from before the power-off */
+  s_dd = marker_at(DD_ADDR, DD_MARK);
   journal_recover();
 }
 
@@ -347,5 +373,6 @@ void buffer_test_reset(void)
 {
   memset(&s_wb, 0, sizeof s_wb);
   s_seq = 0; s_fault = false; s_pre_j = 0xFFu; s_pre_n = 0;
+  s_dd = false;
 }
 #endif

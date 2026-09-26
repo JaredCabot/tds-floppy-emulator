@@ -16,7 +16,8 @@
 #include "ff.h"
 #include <string.h>
 
-#define DISK_BYTES  FATIMG_DATA_BYTES       /* the largest file a 1.44 MB disk holds */
+/* the largest file the internal disk holds: 1.44 MB HD, or 720 KB DD */
+static uint32_t disk_bytes(void) { return fatimg_capacity(buffer_is_dd()); }
 
 volatile uint32_t xfer_dbg_files, xfer_dbg_bytes;
 
@@ -138,7 +139,7 @@ static int next_file(const char *after, FILINFO *best)
     if(same_name(fi.fname, UPD_FILE_NAME)) continue; /* the firmware update is not a scope file */
     /* short (8.3) names throughout: all the scope can use, and FatFs keeps them in
      * altname even when the file has a long name (e.g. TEK00000_1.BMP -> TEK000~1.BMP) */
-    if(fi.fsize > DISK_BYTES || name_cmp(sfn(&fi), after) <= 0) continue;
+    if(fi.fsize > disk_bytes() || name_cmp(sfn(&fi), after) <= 0) continue;
     if(!found || name_cmp(sfn(&fi), sfn(best)) < 0) { *best = fi; found = 1; }
   }
   f_closedir(&s_dir);
@@ -181,7 +182,7 @@ static bool disk_ok(uint16_t nfiles)
   if(!fatimg_open(r, &buffer_fatimg_io)) return false;
   while(fatimg_next_file(r, &f))
   {
-    uint32_t need = (f.size + 511u) / 512u;
+    uint32_t need = fatimg_clusters_for(r, f.size);
     if(fatimg_chain_len(r, f.first_cl, need) < need) return false;
     n++;
   }
@@ -208,7 +209,7 @@ xfer_result_t xfer_in(void)
   strcpy(s_ws->page_start, s_last);                  /* a failed page is reloaded next time */
   fatimg_build_t *b = &s_ws->b;
   buffer_begin_rebuild();
-  fatimg_build_begin(b, &buffer_fatimg_io);
+  fatimg_build_begin(b, &buffer_fatimg_io, buffer_is_dd());
   do {
     if(!disk_name(b, sfn(&fi), n83)) { strcpy(s_last, sfn(&fi)); continue; }   /* no free name: skip */
     if(!fatimg_fits(b, fi.fsize)) break;             /* page full: next press continues here */
@@ -255,17 +256,17 @@ static int same_as_disk(const fatimg_file_t *f)
   UINT n2;
   if(f_open(&s_fil, s_ws->path, FA_READ) != FR_OK) return -1;
   int res = (f_size(&s_fil) == f->size) ? 1 : 0;
-  uint32_t left = f->size;
-  for(uint16_t cl = f->first_cl; res == 1 && left && cl; cl = fatimg_next_cluster(r, cl))
+  fatimg_pos_t pos;
+  uint32_t lba, n;
+  fatimg_pos_start(&pos, f);
+  while(res == 1 && (n = fatimg_pos_next(r, &pos, &lba)) != 0)
   {
-    uint32_t n = left < sizeof s_sec ? left : sizeof s_sec;
     if(cancelled()) { res = -1; break; }
-    buffer_read_lba(fatimg_cluster_lba(r, cl), s_sec);
+    buffer_read_lba(lba, s_sec);
     if(f_read(&s_fil, s_ws->chk, n, &n2) != FR_OK) res = -1;
     else if(n2 != n || memcmp(s_sec, s_ws->chk, n) != 0) res = 0;
-    left -= n;
   }
-  if(res == 1 && left) res = 0;
+  if(res == 1 && pos.left) res = 0;
   f_close(&s_fil);
   return res;
 }
@@ -317,18 +318,18 @@ static xfer_result_t copy_file(const fatimg_file_t *f)
   UINT n2;
   if(f_open(&s_fil, s_ws->path, FA_CREATE_NEW | FA_WRITE) != FR_OK) return XFER_USB_ERROR;
   xfer_result_t res = XFER_OK;
-  uint32_t left = f->size;
-  for(uint16_t cl = f->first_cl; left && cl; cl = fatimg_next_cluster(r, cl))
+  fatimg_pos_t pos;
+  uint32_t lba, n;
+  fatimg_pos_start(&pos, f);
+  while((n = fatimg_pos_next(r, &pos, &lba)) != 0)
   {
-    uint32_t n = left < sizeof s_sec ? left : sizeof s_sec;
     if(cancelled()) { res = XFER_CANCELLED; break; }
-    buffer_read_lba(fatimg_cluster_lba(r, cl), s_sec);
+    buffer_read_lba(lba, s_sec);
     if(f_write(&s_fil, s_sec, n, &n2) != FR_OK || n2 != n) { res = XFER_USB_ERROR; break; }
-    left -= n;
     xfer_dbg_bytes += n;
   }
   if(f_close(&s_fil) != FR_OK) res = XFER_USB_ERROR;
-  if(res == XFER_OK && left) res = XFER_BAD_IMAGE;
+  if(res == XFER_OK && pos.left) res = XFER_BAD_IMAGE;          /* chain shorter than the file */
   if(res != XFER_OK) { f_unlink(s_ws->path); return res; }
   FILINFO t = { .fdate = f->date, .ftime = f->time };
   f_utime(s_ws->path, &t);                         /* keep the scope's timestamp */
@@ -372,7 +373,7 @@ static xfer_result_t copy_out(void)
       fatimg_dir_sub(r, &s_ws->dirs[depth], f.first_cl);
       continue;
     }
-    uint32_t need = (f.size + 511u) / 512u;         /* a chain shorter than the file: */
+    uint32_t need = fatimg_clusters_for(r, f.size); /* a chain shorter than the file: */
     if(fatimg_chain_len(r, f.first_cl, need) < need) { kept = XFER_BAD_IMAGE; continue; }
     int p = place_file(base, &f);
     if(p == PLACE_ERR) return why(XFER_USB_ERROR);

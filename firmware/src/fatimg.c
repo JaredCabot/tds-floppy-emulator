@@ -5,41 +5,50 @@
 #include "fat12.h"
 #include <string.h>
 
-/* Geometry of the images we BUILD (standard DOS 1.44 MB, as fat12.c). */
+/* Geometry of the images we BUILD: standard DOS 1.44 MB HD and 720 KB DD, as
+ * fat12.c. FATs start at LBA 1, the root directory follows both FATs. */
 #define B_FAT_LBA     1u
-#define B_FAT_SECS    9u
-#define B_ROOT_LBA    19u
-#define B_ROOT_SECS   14u
-#define B_DATA_LBA    33u
-#define B_CLUSTERS    (2880u - B_DATA_LBA)     /* 2847 data clusters, 2..2848 */
-_Static_assert(B_CLUSTERS == FATIMG_DATA_CLUSTERS, "fatimg.h geometry");
+typedef struct { uint16_t fat_secs, root_secs, data_lba, clusters, max_files; uint8_t spc, media; } bgeom_t;
+static const bgeom_t BG[2] = {
+  { 9u, 14u, 33u, 2847u, 224u, 1u, 0xF0u },     /* HD: 2880 sectors */
+  { 3u,  7u, 14u,  713u, 112u, 2u, 0xF9u },     /* DD: 1440 sectors */
+};
+_Static_assert(2880u - 33u == FATIMG_DATA_CLUSTERS, "fatimg.h HD geometry");
+_Static_assert((1440u - 14u) / 2u == FATIMG_DD_CLUSTERS, "fatimg.h DD geometry");
+#define G(b)          (&BG[(b)->dd ? 1 : 0])
+#define B_ROOT_LBA(b) (B_FAT_LBA + 2u * G(b)->fat_secs)
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
 static uint32_t rd32(const uint8_t *p) { return p[0] | p[1] << 8 | (uint32_t)p[2] << 16 | (uint32_t)p[3] << 24; }
 
 /* ================================ build ================================ */
-void fatimg_build_begin(fatimg_build_t *b, const fatimg_io_t *io)
+void fatimg_build_begin(fatimg_build_t *b, const fatimg_io_t *io, bool dd)
 {
   memset(b, 0, sizeof *b);
   b->io = *io;
+  b->dd = dd;
   b->next_cl = 2;
 }
 
-static uint16_t clusters_for(uint32_t size) { return (uint16_t)((size + FATIMG_SECTOR - 1) / FATIMG_SECTOR); }
+static uint16_t clusters_for(const fatimg_build_t *b, uint32_t size)
+{
+  uint32_t cb = FATIMG_SECTOR * G(b)->spc;
+  return (uint16_t)((size + cb - 1u) / cb);
+}
 
 bool fatimg_fits(const fatimg_build_t *b, uint32_t size)
 {
-  if(b->nfiles >= FATIMG_MAX_FILES) return false;
-  return (uint32_t)b->next_cl - 2u + clusters_for(size) <= B_CLUSTERS;
+  if(b->nfiles >= G(b)->max_files) return false;
+  return (uint32_t)b->next_cl - 2u + clusters_for(b, size) <= G(b)->clusters;
 }
 
 bool fatimg_alloc(fatimg_build_t *b, uint32_t size, uint32_t *first_lba)
 {
   if(!fatimg_fits(b, size)) return false;
-  b->pend_n = clusters_for(size);
+  b->pend_n = clusters_for(b, size);
   b->pend_cl = b->pend_n ? b->next_cl : 0;          /* empty file: no clusters */
   b->next_cl = (uint16_t)(b->next_cl + b->pend_n);
-  *first_lba = B_DATA_LBA + (b->pend_cl ? b->pend_cl - 2u : 0);
+  *first_lba = G(b)->data_lba + (b->pend_cl ? (uint32_t)(b->pend_cl - 2u) * G(b)->spc : 0u);   /* contiguous */
   return true;
 }
 
@@ -57,7 +66,7 @@ void fatimg_commit(fatimg_build_t *b, const char name83[11], uint32_t size, uint
   e[26] = (uint8_t)b->pend_cl; e[27] = (uint8_t)(b->pend_cl >> 8);
   e[28] = (uint8_t)size; e[29] = (uint8_t)(size >> 8); e[30] = (uint8_t)(size >> 16); e[31] = (uint8_t)(size >> 24);
   uint32_t off = (uint32_t)b->nfiles * 32u;
-  b->io.program(B_ROOT_LBA + off / FATIMG_SECTOR, off % FATIMG_SECTOR, e, 32, b->io.ctx);
+  b->io.program(B_ROOT_LBA(b) + off / FATIMG_SECTOR, off % FATIMG_SECTOR, e, 32, b->io.ctx);
   b->ext_cl[b->nfiles] = b->pend_cl;
   b->ext_n[b->nfiles] = b->pend_n;
   memcpy(b->names[b->nfiles], name83, 11);
@@ -68,7 +77,7 @@ void fatimg_commit(fatimg_build_t *b, const char name83[11], uint32_t size, uint
 /* FAT12 value for cluster c, from the committed extents */
 static uint16_t fat_value(const fatimg_build_t *b, uint32_t c)
 {
-  if(c == 0) return 0xFF0;                          /* media 0xF0 */
+  if(c == 0) return (uint16_t)(0xF00u | G(b)->media);   /* media byte (F0 HD, F9 DD) */
   if(c == 1) return 0xFFF;
   for(unsigned i = 0; i < b->nfiles; i++)
     if(b->ext_n[i] && c >= b->ext_cl[i] && c < (uint32_t)b->ext_cl[i] + b->ext_n[i])
@@ -79,10 +88,10 @@ static uint16_t fat_value(const fatimg_build_t *b, uint32_t c)
 void fatimg_finish(fatimg_build_t *b)
 {
   uint8_t s[FATIMG_SECTOR];
-  fat12_blank_sector(0, s, NULL);                   /* boot sector / BPB */
+  fat12_boot_sector(s, b->dd, NULL);                /* boot sector / BPB */
   b->io.program(0, 0, s, FATIMG_SECTOR, b->io.ctx);
 
-  for(unsigned sec = 0; sec < B_FAT_SECS; sec++)   /* FAT1 and FAT2 */
+  for(unsigned sec = 0; sec < G(b)->fat_secs; sec++)   /* FAT1 and FAT2 */
   {
     for(unsigned i = 0; i < FATIMG_SECTOR; i++)
     {
@@ -95,15 +104,15 @@ void fatimg_finish(fatimg_build_t *b)
       s[i] = byte;
     }
     b->io.program(B_FAT_LBA + sec, 0, s, FATIMG_SECTOR, b->io.ctx);
-    b->io.program(B_FAT_LBA + B_FAT_SECS + sec, 0, s, FATIMG_SECTOR, b->io.ctx);
+    b->io.program(B_FAT_LBA + G(b)->fat_secs + sec, 0, s, FATIMG_SECTOR, b->io.ctx);
   }
 
   /* unused root entries must read 00 (end of directory), not erased FF */
   memset(s, 0, sizeof s);
-  for(uint32_t off = (uint32_t)b->nfiles * 32u; off < B_ROOT_SECS * FATIMG_SECTOR; )
+  for(uint32_t off = (uint32_t)b->nfiles * 32u; off < G(b)->root_secs * FATIMG_SECTOR; )
   {
     unsigned in = off % FATIMG_SECTOR, n = FATIMG_SECTOR - in;
-    b->io.program(B_ROOT_LBA + off / FATIMG_SECTOR, in, s, n, b->io.ctx);
+    b->io.program(B_ROOT_LBA(b) + off / FATIMG_SECTOR, in, s, n, b->io.ctx);
     off += n;
   }
 }
@@ -124,14 +133,17 @@ bool fatimg_open(fatimg_read_t *r, const fatimg_io_t *io)
   uint16_t bps = rd16(&s[11]), res = rd16(&s[14]), root = rd16(&s[17]), spf = rd16(&s[22]);
   uint32_t total = rd16(&s[19]) ? rd16(&s[19]) : rd32(&s[32]);
   uint8_t spc = s[13], nfats = s[16];
-  if(s[510] != 0x55 || s[511] != 0xAA || bps != FATIMG_SECTOR || spc != 1 || !res || !nfats
+  if(s[510] != 0x55 || s[511] != 0xAA || bps != FATIMG_SECTOR || (spc != 1 && spc != 2) || !res || !nfats
      || !spf || !root || root > 1024 || total > 2880 || total < 100)
     return false;                                   /* not a 1.44 MB-style volume */
   r->fat_lba = res;
   r->root_lba = (uint16_t)(res + nfats * spf);
   r->root_entries = root;
   r->data_lba = (uint16_t)(r->root_lba + (root * 32u + FATIMG_SECTOR - 1) / FATIMG_SECTOR);
-  r->max_cl = (uint16_t)(total - r->data_lba + 1);  /* highest valid cluster */
+  r->spc = spc;
+  r->media = s[21];
+  if(r->data_lba >= total) return false;
+  r->max_cl = (uint16_t)((total - r->data_lba) / spc + 1u);   /* highest valid cluster */
   uint32_t fat_entries = (uint32_t)spf * FATIMG_SECTOR * 2u / 3u;
   if(r->max_cl >= fat_entries) r->max_cl = (uint16_t)(fat_entries - 1);
   return r->data_lba < total;
@@ -171,7 +183,28 @@ uint16_t fatimg_next_cluster(fatimg_read_t *r, uint16_t cl)
 
 uint32_t fatimg_cluster_lba(const fatimg_read_t *r, uint16_t cl)
 {
-  return r->data_lba + (uint32_t)(cl - 2u);
+  return r->data_lba + (uint32_t)(cl - 2u) * r->spc;
+}
+
+uint32_t fatimg_clusters_for(const fatimg_read_t *r, uint32_t size)
+{
+  uint32_t cb = FATIMG_SECTOR * r->spc;
+  return (size + cb - 1u) / cb;
+}
+
+void fatimg_pos_start(fatimg_pos_t *p, const fatimg_file_t *f)
+{
+  p->cl = f->first_cl; p->k = 0; p->left = f->size;
+}
+
+uint32_t fatimg_pos_next(fatimg_read_t *r, fatimg_pos_t *p, uint32_t *lba)
+{
+  if(!p->left || p->cl < 2 || p->cl > r->max_cl) return 0;
+  *lba = fatimg_cluster_lba(r, p->cl) + p->k;
+  uint32_t n = p->left < FATIMG_SECTOR ? p->left : FATIMG_SECTOR;
+  p->left -= n;
+  if(++p->k >= r->spc) { p->k = 0; p->cl = fatimg_next_cluster(r, p->cl); }
+  return n;
 }
 
 /* ---- directory walk ---- */
@@ -202,14 +235,15 @@ bool fatimg_dir_next(fatimg_read_t *r, fatimg_dir_t *d, fatimg_file_t *f)
     else                                            /* subdirectory: a cluster chain */
     {
       if(d->cl == 0) return false;
-      if(d->index >= FATIMG_SECTOR / 32u)
+      if(d->index >= (FATIMG_SECTOR / 32u) * r->spc)     /* 16 or 32 entries per cluster */
       {
         d->cl = fatimg_next_cluster(r, d->cl);      /* 0 at the end (or a corrupt entry) */
         d->index = 0;
         if(d->cl == 0) return false;
         if(++d->clusters > FATIMG_DIR_MAX_CL) { d->bad = true; d->cl = 0; return false; }
       }
-      e = cached(r, fatimg_cluster_lba(r, d->cl)) + d->index++ * 32u;
+      e = cached(r, fatimg_cluster_lba(r, d->cl) + d->index / 16u) + (d->index % 16u) * 32u;
+      d->index++;
     }
     if(e[0] == 0x00)                                /* end of the directory */
     {
@@ -255,7 +289,7 @@ bool fatimg_valid(fatimg_read_t *r, const fatimg_io_t *io)
   {
     io->read(fats[k], r->cache, io->ctx);
     r->cache_lba = fats[k];
-    if(r->cache[0] != 0xF0 || r->cache[1] != 0xFF || r->cache[2] != 0xFF) return false;
+    if(r->cache[0] != r->media || r->cache[1] != 0xFF || r->cache[2] != 0xFF) return false;
   }
   return true;
 }

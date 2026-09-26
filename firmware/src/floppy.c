@@ -101,6 +101,15 @@ static bool     s_started;                 /* flpy_init() done */
 static volatile uint8_t s_trk_cyl = 0xFF, s_trk_head = 0xFF;
 static volatile bool s_trk_valid, s_trk_dirty;
 
+/* The disk's geometry (HD / DD) and MFM cell time in timer ticks (1 / 2 us). */
+static const mfm_geom_t *s_geom = &mfm_geom_hd;
+static uint32_t s_cell = TICKS_PER_CELL;
+/* Data rate of the current write, from its raw flux intervals: 1.5-3.5 us only
+ * occur at HD (500 kbit/s), 5.5-8.5 us only at DD (250 kbit/s); 4 us is both. */
+static volatile uint32_t s_ev_hd, s_ev_dd;
+static volatile int8_t s_switch_to = -1;         /* density switch requested: 1 DD, 0 HD */
+volatile uint32_t flpy_dbg_dd, flpy_dbg_density_switches, flpy_dbg_ev_hd, flpy_dbg_ev_dd;
+
 static bool track_visible(void)
 {
   return s_media && s_trk_valid && s_trk_cyl == s_cyl && s_trk_head == s_head;
@@ -150,7 +159,7 @@ static volatile int8_t s_index_half = -1;
 
 static void rd_fill(uint16_t *dst, unsigned n, int8_t half)
 {
-  mfm_track_t t = { s_cyl, s_head, s_trk, s_crc, !track_visible() };
+  mfm_track_t t = { s_cyl, s_head, s_trk, s_crc, !track_visible(), s_geom };
   for(unsigned i = 0; i < n; i++)
   {
     unsigned cells = 0;
@@ -162,13 +171,13 @@ static void rd_fill(uint16_t *dst, unsigned n, int8_t half)
         mfm_track_byte(&t, s_rd_p, &v, &sy);
         s_rd_cur = (uint32_t)mfm_encode_byte(v, sy, &s_rd_prev) << 16;
         s_rd_nb = 16;
-        if(++s_rd_p >= MFM_TRACK_DATA_BYTES) { s_rd_p = 0; s_index_half = half; }
+        if(++s_rd_p >= t.g->track_bytes) { s_rd_p = 0; s_index_half = half; }
       }
       unsigned bit = s_rd_cur >> 31;
       s_rd_cur <<= 1; s_rd_nb--; cells++;
       if(bit || cells >= 8) break;             /* MFM never exceeds 4 */
     }
-    dst[i] = (uint16_t)(cells * TICKS_PER_CELL - 1u);
+    dst[i] = (uint16_t)(cells * s_cell - 1u);
   }
 }
 
@@ -253,14 +262,14 @@ static void wr_field(uint8_t mark, const uint8_t *f, unsigned len, void *ctx)
   {
     if(len < 6) return;                            /* C H R N + CRC */
     uint8_t b[8] = { 0xA1, 0xA1, 0xA1, 0xFE, f[0], f[1], f[2], f[3] };
-    if(mfm_crc_ccitt(0xFFFF, b, 8) == ((f[4] << 8) | f[5]) && f[2] >= 1 && f[2] <= 18)
+    if(mfm_crc_ccitt(0xFFFF, b, 8) == ((f[4] << 8) | f[5]) && f[2] >= 1 && f[2] <= s_geom->sectors)
     { s_wr_next = f[2] - 1; s_wr_nid++; }
     return;
   }
   if(len != MFM_SECTOR_SIZE + 2) { flpy_dbg_wr_badcrc++; return; }
   uint16_t crc = mfm_data_crc(f);
   if(crc != ((f[512] << 8) | f[513])) { flpy_dbg_wr_badcrc++; return; }
-  if(!s_wr_visible || s_wr_next < 0 || s_wr_next >= (int)MFM_SECTORS_PER_TRACK) { flpy_dbg_wr_lost++; return; }
+  if(!s_wr_visible || s_wr_next < 0 || s_wr_next >= (int)s_geom->sectors) { flpy_dbg_wr_lost++; return; }
   if(s_trk_cyl != s_wr_trk_cyl || s_trk_head != s_wr_trk_head || !s_trk_valid)
   { flpy_dbg_wr_track_changed++; return; }         /* RAM track replaced mid-write: never misfile */
   memcpy(&s_trk[s_wr_next * MFM_SECTOR_SIZE], f, MFM_SECTOR_SIZE);
@@ -278,7 +287,12 @@ static void wr_decode_to(unsigned end)             /* decode ring entries up to 
     uint16_t v = s_wr_ring[s_wr_idx];
     s_wr_idx = (s_wr_idx + 1) % WR_RING;
     if(s_wr_have_last)
-      mfm_dec_push(&s_dec, ((uint16_t)(v - s_wr_last) + TICKS_PER_CELL / 2) / TICKS_PER_CELL);
+    {
+      uint32_t dt = (uint16_t)(v - s_wr_last);
+      if(dt >= 216u && dt < 504u) s_ev_hd++;       /* 1.5-3.5 us: HD only */
+      else if(dt >= 792u && dt < 1224u) s_ev_dd++; /* 5.5-8.5 us: DD only */
+      mfm_dec_push(&s_dec, (dt + s_cell / 2u) / s_cell);
+    }
     s_wr_last = v; s_wr_have_last = true;
   }
 }
@@ -311,9 +325,9 @@ static uint32_t playback_byte(void)
   if(playing < RD_RING / 2) end = dma_flag_get(DMA1_FDT3_FLAG) ? RD_RING / 2 : RD_RING;
   else                      end = dma_flag_get(DMA1_HDT3_FLAG) ? RD_RING : RD_RING + RD_RING / 2;
   uint32_t queued = 0;
-  for(unsigned i = playing; i < end; i++) queued += (s_rd_ring[i % RD_RING] + 1u) / TICKS_PER_CELL;
-  uint32_t total = MFM_TRACK_DATA_BYTES * 16u;
-  uint32_t gen = (s_rd_p ? s_rd_p : MFM_TRACK_DATA_BYTES) * 16u - s_rd_nb;   /* cells emitted
+  for(unsigned i = playing; i < end; i++) queued += (s_rd_ring[i % RD_RING] + 1u) / s_cell;
+  uint32_t total = s_geom->track_bytes * 16u;
+  uint32_t gen = (s_rd_p ? s_rd_p : s_geom->track_bytes) * 16u - s_rd_nb;   /* cells emitted
                                                      (s_rd_p == 0: byte in progress is the last one) */
   __set_PRIMASK(pm);
   return ((gen + total - queued % total) % total) / 16u;
@@ -330,9 +344,10 @@ static void wr_start(void)
    * controller has just read, i.e. ~44 bytes into that sector's 658-byte slot;
    * +300 centres that in the slot (margins ~300 bytes each side). */
   uint32_t p = playback_byte();
-  uint32_t s = (p + 300u - MFM_TRACK_PRE) / MFM_SECTOR_STRIDE;
-  s_wr_next = (p + 300u >= MFM_TRACK_PRE && s < MFM_SECTORS_PER_TRACK) ? (int)s : -1;
+  uint32_t s = (p + 300u - MFM_TRACK_PRE) / s_geom->stride;
+  s_wr_next = (p + 300u >= MFM_TRACK_PRE && s < s_geom->sectors) ? (int)s : -1;
   mfm_dec_reset(&s_dec);
+  s_ev_hd = s_ev_dd = 0;
   s_wr_have_last = false;
   s_writing = true;                                /* decoding continues from where the last
                                                       write ended: every edge since is this one */
@@ -347,6 +362,12 @@ static void wr_stop(void)
   wr_decode_to((WR_RING - dma_data_number_get(DMA1_CHANNEL2)) % WR_RING);
   __set_PRIMASK(pm);
   s_writing = false;
+  /* written at the other data rate? The host's density line says the other
+   * density: it is formatting the disk as that (flpy_poll switches). */
+  flpy_dbg_ev_hd = s_ev_hd; flpy_dbg_ev_dd = s_ev_dd;
+  bool dd = s_geom == &mfm_geom_dd;
+  if(!dd && s_ev_dd > 100u && s_ev_hd * 8u < s_ev_dd) s_switch_to = 1;
+  else if(dd && s_ev_hd > 100u && s_ev_dd * 8u < s_ev_hd) s_switch_to = 0;
   s_wr_end_ms = flpy_dbg_ms;
   s_last_active_ms = flpy_dbg_ms;
   unsigned g = flpy_dbg_wr_gates - 1u;
@@ -564,8 +585,32 @@ static void track_load(uint8_t cyl, uint8_t head)
   trace(false, cyl, head);
 }
 
+static void geom_apply(bool dd)
+{
+  uint32_t pm = __get_PRIMASK();
+  __disable_irq();
+  s_geom = dd ? &mfm_geom_dd : &mfm_geom_hd;
+  s_cell = dd ? 2u * TICKS_PER_CELL : TICKS_PER_CELL;
+  s_rd_p = 0; s_rd_nb = 0;                         /* restart the revolution */
+  flpy_dbg_dd = dd;
+  __set_PRIMASK(pm);
+}
+
+bool flpy_is_dd(void) { return s_geom == &mfm_geom_dd; }
+
+void flpy_set_density(bool dd)
+{
+  if(flpy_is_dd() == dd) return;
+  if(s_trk_dirty) track_hand_off(true);            /* commit anything pending first */
+  wb_finish();
+  buffer_set_density(dd);
+  geom_apply(dd);
+  flpy_dbg_density_switches++;
+}
+
 void flpy_init(void)
 {
+  geom_apply(buffer_is_dd());
   gpio_conf();
   track_load(0, 0);
   SysTick_Config(system_core_clock / 1000u);
@@ -584,6 +629,7 @@ void flpy_poll(void)
   wb_poll();                                                   /* background write-back */
   if(!s_selected && !s_writing && !s_pend_busy) buffer_bg_poll();   /* idle: pre-erase */
   if(s_writing || !s_media) return;                            /* never touch the track mid-write */
+  if(s_switch_to >= 0) { bool dd = s_switch_to == 1; s_switch_to = -1; flpy_set_density(dd); }
 
   uint8_t cyl = s_cyl, head = s_head;
   if(cyl != s_trk_cyl || head != s_trk_head)

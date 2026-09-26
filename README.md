@@ -60,7 +60,9 @@ The scope sees `fd0:` as an ordinary 1.44 MB floppy: read, save, format.
 | Green (if fitted) | Hard-wired to the scope's drive-select line: lit while the scope accesses the drive. Not fitted on some units |
 
 Jumpers as for the stock unit in a TDS: **S1 only** (drive select); MO (the
-other position of the same three-pin header), JE and JD off. Details: the
+other position of the same three-pin header), JE and JD off. From firmware
+1.1.0, fitting **JE** makes the drive a 720 KB DD drive: format the disk in the
+scope and it becomes a 720 KB disk ([docs/10](docs/10-read-write-path.md)). Details: the
 manual (*Set the Jumper*, Table 2-2) and [docs/01](docs/01-hardware.md);
 buttons, LED and transfers: [docs/11-usb.md](docs/11-usb.md).
 
@@ -69,8 +71,8 @@ Nothing in the firmware is specific to the TDS beyond its settings, so it
 should also work in other devices that use this emulator (or a 26-pin slim
 floppy drive) with **1.44 MB PC-format (FAT12) disks**. What a device needs:
 
-- a 1.44 MB high-density drive: the firmware emulates no other size (no
-  720 KB, so jumper JE is not supported);
+- a 1.44 MB HD drive, or from firmware 1.1.0 a 720 KB DD drive (jumper JE
+  fitted; the disk becomes DD when the device formats it);
 - the drive signals as the TDS uses them: DISK CHANGE on pin 6, READY on
   pin 8, drive select on the S1 jumper position;
 - for DATA IN and DATA OUT, a FAT12 disk: a device that writes its own disk

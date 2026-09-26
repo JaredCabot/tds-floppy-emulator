@@ -81,6 +81,49 @@ counts journal writes since power-on (`tools/button.ps1 status`). An image from 
 and before (marker `TDSFBUF1` or `GTKBUF01` in slot 0's spare area) is taken
 over as it is. `tools/reformat.ps1` re-formats over SWD.
 
+## Disk density: 720 KB DD and 1.44 MB HD (1.1.0)
+The internal disk has a density, as a real floppy does: **1.44 MB HD** (500
+kbit/s, 18 sectors per track) or **720 KB DD** (250 kbit/s, 9 sectors, the
+standard gap3 of 80). Both turn at 300 RPM, so a revolution is 12500 or 6250
+bytes (`mfm_geom_hd` / `mfm_geom_dd`). The host learns the density from HD OUT
+(pin 9), and that line is only jumper JE (fitted: DD); the MCU cannot read it
+(pin 9 reaches only a 1 k pull-up and JE, schematic). So the density cannot be
+detected: it is a property of the disk and changes the way a real disk's does,
+**when the host formats it at the other density**.
+
+- **Read:** the MFM generator uses the disk's geometry and a 2 us cell for DD
+  (`s_geom`, `s_cell` in floppy.c): same code path as HD.
+- **Rate detection:** every write's raw flux intervals are classified before
+  decoding. 1.5-3.5 us only occurs at HD, 5.5-8.5 us only at DD (4 us is both).
+  At the end of a write, more than 100 intervals of the other density,
+  outnumbering the current one 8 to 1, request a switch.
+- **Switch** (`flpy_set_density`, main loop): commit any pending track, finish
+  the write-back, record the density, change the geometry. The host is
+  formatting: it rewrites every track. The one write the switch was detected
+  from is not decoded (it was format filler; the host's verify of that track
+  still passes). A write at the other density only happens when the host's
+  jumper disagrees with the disk, and a host cannot use such a disk except by
+  formatting it, so this is always a format.
+- **Record:** `TDSDD720` at meta + 32 when DD (absent: HD). A rebuild writes it
+  before the marker; a marker repair keeps it; switching back to HD rewrites
+  the meta sector (keeping a recorded fault). A rebuild cut short by a power
+  cut comes back as a blank HD disk; the next format at DD switches it back.
+- **Buffer:** a DD track uses the first 4.5 KB of its 12 KB slot; LBAs map 9
+  per track. The journal and slots are unchanged.
+- **Files (fatimg.c):** a 720 KB volume has 1440 sectors, **2 per cluster**,
+  3-sector FATs, 112 root entries, media F9 (data from LBA 14, 713 clusters,
+  largest file 730,112 bytes). DATA IN builds and DATA OUT reads it; file data
+  is walked sector by sector (`fatimg_pos_*`), folders 32 entries per cluster.
+
+Tested 2026-09-27 on the TDS 784D with JE fitted: an HD disk switched to DD by
+itself on the scope's format (190 s, verified), then saves, a folder tree
+three levels deep, DATA OUT (all files byte-identical), DATA IN (a 716,800-byte
+file in 700 of 713 clusters, byte-identical) and 24 stress saves (identical,
+0 bad CRC, 0 lost, head wait 0.58 ms). Host tests: DD MFM track, DD volume
+build/read/limits/folders, density record through power cycles, rebuilds,
+repairs and the switch back. The TDS firmware supports both densities
+(docs/12).
+
 ## Track in RAM (floppy.c)
 Only the track under the head is live in RAM, **raw** (9216 B + 18 data CRCs),
 not pre-encoded MFM (which took 25.6 KB and left no room for writes or USB).

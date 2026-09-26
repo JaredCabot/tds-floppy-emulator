@@ -12,7 +12,7 @@ $sym = @{}
 if (-not (Test-Path build\flashed.bin) -or (Get-FileHash build\tdsfloppy.bin).Hash -ne (Get-FileHash build\flashed.bin).Hash) { "FIRMWARE MISMATCH: build\tdsfloppy.bin is not the image last flashed - run make flash-swd first (symbol addresses would be wrong)."; exit 3 }
 arm-none-eabi-nm build\tdsfloppy.elf | ForEach-Object {
   $p = $_ -split '\s+'
-  if ($p.Count -eq 3 -and $p[2] -match '^(dbg_unlock|dbg_button|dbg_xfer_result|dbg_xfer_count|dbg_usb_ready|xfer_dbg_files|xfer_dbg_bytes|xfer_dbg_cancel_at|dbg_fw_version|dbg_fw_build|dbg_fault|buffer_dbg_writebacks)$') { $sym[$p[2]] = "0x" + $p[0] }
+  if ($p.Count -eq 3 -and $p[2] -match '^(dbg_unlock|dbg_button|dbg_xfer_result|dbg_xfer_count|dbg_usb_ready|xfer_dbg_files|xfer_dbg_bytes|xfer_dbg_cancel_at|dbg_fw_version|dbg_fw_build|dbg_fault|buffer_dbg_writebacks|flpy_dbg_dd)$') { $sym[$p[2]] = "0x" + $p[0] }
 }
 function Read-Vars {
   $tcl = "init`n" + (($sym.GetEnumerator() | ForEach-Object { "echo `"$($_.Key)=[read_memory $($_.Value) 32 1]`"" }) -join "`n") + "`nexit`n"
@@ -25,7 +25,7 @@ $names = @('OK', 'NO_STICK', 'USB_ERROR', 'BAD_IMAGE', 'NOTHING', 'VERIFY_FAILED
 $before = Read-Vars
 if ($Which -eq 'status') {
   $v = $before.dbg_fw_version
-  "firmware {0}.{1}.{2} build {3:x8} fault={4} writebacks={10} | usb_ready={5} transfers={6} last={7} files={8} bytes={9}" -f ($v -shr 16), (($v -shr 8) -band 255), ($v -band 255), $before.dbg_fw_build, $before.dbg_fault, $before.dbg_usb_ready, $before.dbg_xfer_count, $names[$before.dbg_xfer_result], $before.xfer_dbg_files, $before.xfer_dbg_bytes, $before.buffer_dbg_writebacks
+  "firmware {0}.{1}.{2} build {3:x8} disk={11} fault={4} writebacks={10} | usb_ready={5} transfers={6} last={7} files={8} bytes={9}" -f ($v -shr 16), (($v -shr 8) -band 255), ($v -band 255), $before.dbg_fw_build, $before.dbg_fault, $before.dbg_usb_ready, $before.dbg_xfer_count, $names[$before.dbg_xfer_result], $before.xfer_dbg_files, $before.xfer_dbg_bytes, $before.buffer_dbg_writebacks, $(if($before.flpy_dbg_dd){'720KB-DD'}else{'1.44MB-HD'})
   exit }
 # one bench tool at a time (see benchlock.py)
 $lock = Join-Path $root 'captures\bench.lock'
