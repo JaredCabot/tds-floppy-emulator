@@ -42,6 +42,8 @@ extern volatile uint32_t flpy_dbg_ms;
  * line, jumper JE, says the other) switches it, as formatting a real disk in
  * the other density would. docs/10. */
 void flpy_set_density(bool dd);
+/* Ask for a switch; flpy_poll() makes it between writes (test hooks use this). */
+void flpy_request_density(bool dd);
 bool flpy_is_dd(void);
 bool flpy_eject(bool (*abort)(void));   /* abort (may be NULL): stop waiting early */
 void flpy_insert(void);

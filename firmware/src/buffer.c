@@ -338,7 +338,9 @@ static bool marker_ok(void)
 static void marker_repair(void)
 {
   bool fault = marker_at(FAULT_ADDR, FAULT_MARK);
-  bool dd = marker_at(DD_ADDR, DD_MARK);
+  uint8_t bs[32];                              /* the volume's own boot sector decides the */
+  spiflash_read(slot_addr(0), bs, sizeof bs);  /* density (LBA 0 maps alike either way) */
+  bool dd = (unsigned)(bs[19] | bs[20] << 8) == 1440u && bs[13] == 2u;
   spiflash_erase_sector(BUF_META_ADDR);
   if(dd) spiflash_program(DD_ADDR, DD_MARK, sizeof DD_MARK);
   if(fault) spiflash_program(FAULT_ADDR, FAULT_MARK, sizeof FAULT_MARK);

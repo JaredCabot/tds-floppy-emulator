@@ -95,19 +95,27 @@ detected: it is a property of the disk and changes the way a real disk's does,
   (`s_geom`, `s_cell` in floppy.c): same code path as HD.
 - **Rate detection:** every write's raw flux intervals are classified before
   decoding. 1.5-3.5 us only occurs at HD, 5.5-8.5 us only at DD (4 us is both).
-  At the end of a write, more than 100 intervals of the other density,
-  outnumbering the current one 8 to 1, request a switch.
+  At the end of a write, the switch is requested only if the write spanned
+  at least 3/4 of a revolution (150 ms: a format writes a whole track at
+  once, a sector write lasts 10-20 ms) and more than 100 intervals of the
+  other density outnumber the current one 8 to 1 (`mfm_rate_decide`,
+  host-tested). So a host that writes a sector blindly with the wrong jumper
+  cannot flip the disk (review 2026-09-27).
 - **Switch** (`flpy_set_density`, main loop): commit any pending track, finish
   the write-back, record the density, change the geometry. The host is
   formatting: it rewrites every track. The one write the switch was detected
-  from is not decoded (it was format filler; the host's verify of that track
-  still passes). A write at the other density only happens when the host's
-  jumper disagrees with the disk, and a host cannot use such a disk except by
-  formatting it, so this is always a format.
+  from is not decoded, so that track is refilled with the format filler (F6)
+  instead of keeping the old density's bytes; the host's verify passes. Other
+  tracks keep old bytes until the host formats them, as a real disk would
+  after an interrupted format.
 - **Record:** `TDSDD720` at meta + 32 when DD (absent: HD). A rebuild writes it
-  before the marker; a marker repair keeps it; switching back to HD rewrites
+  before the marker; a marker repair takes the density from the volume's own
+  boot sector (1440 sectors, 2 per cluster: DD); switching back to HD rewrites
   the meta sector (keeping a recorded fault). A rebuild cut short by a power
   cut comes back as a blank HD disk; the next format at DD switches it back.
+- **Downgrade:** firmware 1.0.0 knows nothing of the DD record: after a
+  downgrade a DD disk is served as HD (unreadable, the data intact); upgrading
+  again, or formatting at HD, fixes it. Release notes must say so.
 - **Buffer:** a DD track uses the first 4.5 KB of its 12 KB slot; LBAs map 9
   per track. The journal and slots are unchanged.
 - **Files (fatimg.c):** a 720 KB volume has 1440 sectors, **2 per cluster**,

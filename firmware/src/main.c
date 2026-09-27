@@ -174,7 +174,7 @@ int main(void)
     }
     if(dbg_flash_req == 6 && unlocked)     /* test hook: set the disk's density (addr 0 HD, 1 DD) */
     {
-      flpy_set_density(dbg_flash_addr != 0);
+      flpy_request_density(dbg_flash_addr != 0);   /* switched between writes, as a real one */
       dbg_flash_req = 0;
     }
     if(dbg_flash_req == 4 || (dbg_flash_req == 3 && unlocked))

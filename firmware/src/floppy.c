@@ -104,9 +104,10 @@ static volatile bool s_trk_valid, s_trk_dirty;
 /* The disk's geometry (HD / DD) and MFM cell time in timer ticks (1 / 2 us). */
 static const mfm_geom_t *s_geom = &mfm_geom_hd;
 static uint32_t s_cell = TICKS_PER_CELL;
-/* Data rate of the current write, from its raw flux intervals: 1.5-3.5 us only
- * occur at HD (500 kbit/s), 5.5-8.5 us only at DD (250 kbit/s); 4 us is both. */
-static volatile uint32_t s_ev_hd, s_ev_dd;
+/* Data rate of the current write, from its raw flux intervals (mfm_rate_*),
+ * and when it started: only a whole-track write (a format) can switch. */
+static mfm_rate_t s_rate;
+static uint32_t s_wr_t0;
 static volatile int8_t s_switch_to = -1;         /* density switch requested: 1 DD, 0 HD */
 volatile uint32_t flpy_dbg_dd, flpy_dbg_density_switches, flpy_dbg_ev_hd, flpy_dbg_ev_dd;
 
@@ -289,8 +290,7 @@ static void wr_decode_to(unsigned end)             /* decode ring entries up to 
     if(s_wr_have_last)
     {
       uint32_t dt = (uint16_t)(v - s_wr_last);
-      if(dt >= 216u && dt < 504u) s_ev_hd++;       /* 1.5-3.5 us: HD only */
-      else if(dt >= 792u && dt < 1224u) s_ev_dd++; /* 5.5-8.5 us: DD only */
+      mfm_rate_add(&s_rate, dt, TICKS_PER_CELL);  /* (an HD cell is 1 us) */
       mfm_dec_push(&s_dec, (dt + s_cell / 2u) / s_cell);
     }
     s_wr_last = v; s_wr_have_last = true;
@@ -347,7 +347,8 @@ static void wr_start(void)
   uint32_t s = (p + 300u - MFM_TRACK_PRE) / s_geom->stride;
   s_wr_next = (p + 300u >= MFM_TRACK_PRE && s < s_geom->sectors) ? (int)s : -1;
   mfm_dec_reset(&s_dec);
-  s_ev_hd = s_ev_dd = 0;
+  s_rate.hd = s_rate.dd = 0;
+  s_wr_t0 = flpy_dbg_ms;
   s_wr_have_last = false;
   s_writing = true;                                /* decoding continues from where the last
                                                       write ended: every edge since is this one */
@@ -362,12 +363,11 @@ static void wr_stop(void)
   wr_decode_to((WR_RING - dma_data_number_get(DMA1_CHANNEL2)) % WR_RING);
   __set_PRIMASK(pm);
   s_writing = false;
-  /* written at the other data rate? The host's density line says the other
-   * density: it is formatting the disk as that (flpy_poll switches). */
-  flpy_dbg_ev_hd = s_ev_hd; flpy_dbg_ev_dd = s_ev_dd;
-  bool dd = s_geom == &mfm_geom_dd;
-  if(!dd && s_ev_dd > 100u && s_ev_hd * 8u < s_ev_dd) s_switch_to = 1;
-  else if(dd && s_ev_hd > 100u && s_ev_dd * 8u < s_ev_hd) s_switch_to = 0;
+  /* a whole track formatted at the other data rate? The host's density line
+   * says the other density (flpy_poll switches; mfm_rate_decide). */
+  flpy_dbg_ev_hd = s_rate.hd; flpy_dbg_ev_dd = s_rate.dd;
+  int sw = mfm_rate_decide(&s_rate, s_geom == &mfm_geom_dd, flpy_dbg_ms - s_wr_t0);
+  if(sw >= 0) s_switch_to = (int8_t)sw;
   s_wr_end_ms = flpy_dbg_ms;
   s_last_active_ms = flpy_dbg_ms;
   unsigned g = flpy_dbg_wr_gates - 1u;
@@ -605,8 +605,15 @@ void flpy_set_density(bool dd)
   wb_finish();
   buffer_set_density(dd);
   geom_apply(dd);
+  /* the track just formatted holds the format filler, not the old density's
+   * bytes (its format write, at the other rate, was not decodable) */
+  memset(s_trk, 0xF6, MFM_SECTORS_PER_TRACK * MFM_SECTOR_SIZE);
+  for(unsigned s = 0; s < MFM_SECTORS_PER_TRACK; s++) s_crc[s] = mfm_data_crc(&s_trk[s * MFM_SECTOR_SIZE]);
+  s_trk_dirty = true;
   flpy_dbg_density_switches++;
 }
+
+void flpy_request_density(bool dd) { s_switch_to = dd ? 1 : 0; }
 
 void flpy_init(void)
 {

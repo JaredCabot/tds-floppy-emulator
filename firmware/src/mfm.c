@@ -71,6 +71,14 @@ _Static_assert(146u + 9u * 654u <= 6250u, "DD track fits a revolution");
 
 static const mfm_geom_t *geom(const mfm_track_t *t) { return t->g ? t->g : &mfm_geom_hd; }
 
+int mfm_rate_decide(const mfm_rate_t *r, bool is_dd, uint32_t gate_ms)
+{
+  if(gate_ms < MFM_FORMAT_MIN_MS) return -1;      /* not a whole track: not a format */
+  if(!is_dd && r->dd > 100u && r->hd * 8u < r->dd) return 1;
+  if(is_dd && r->hd > 100u && r->dd * 8u < r->hd) return 0;
+  return -1;
+}
+
 /* ================================================================
  * Track layout (data-byte offsets), HD shown (DD: 9 sectors, stride 654,
  * gap3 80, 6250 bytes):

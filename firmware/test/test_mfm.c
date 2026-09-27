@@ -669,6 +669,38 @@ static void test_fatimg_dd(void)
   CHECK(found == 1, "DD: a folder entry in the second sector of a 2-sector cluster is found");
 }
 
+/* density switch decision: only a whole-track write (a format) at the other
+ * rate switches; sector writes, noise and ambiguous timing never do */
+static void rate_fill(mfm_rate_t *r, unsigned n, const unsigned us[3], uint32_t tpu)
+{
+  for(unsigned i = 0; i < n; i++)
+  {
+    uint32_t dt = us[i % 3] * tpu;
+    dt = dt + dt * ((int)(i % 11) - 5) / 100;     /* +-5 % jitter */
+    mfm_rate_add(r, dt, tpu);
+  }
+}
+static void test_rate(void)
+{
+  static const unsigned DD[3] = { 4, 6, 8 }, HD[3] = { 2, 3, 4 }, AMB[3] = { 4, 4, 4 };
+  mfm_rate_t d = {0}, h = {0}, m = {0}, a = {0}, few = {0}, d72 = {0};
+  rate_fill(&d, 30000, DD, 144);
+  CHECK(mfm_rate_decide(&d, false, 200) == 1, "rate: a DD format on an HD disk switches to DD");
+  CHECK(mfm_rate_decide(&d, false, 20) == -1, "rate: a DD SECTOR write (20 ms) on an HD disk does not switch");
+  CHECK(mfm_rate_decide(&d, false, 149) == -1 && mfm_rate_decide(&d, false, 150) == 1, "rate: 150 ms is the format threshold");
+  CHECK(mfm_rate_decide(&d, true, 200) == -1, "rate: DD writes on a DD disk never switch");
+  rate_fill(&h, 60000, HD, 144);
+  CHECK(mfm_rate_decide(&h, true, 200) == 0 && mfm_rate_decide(&h, false, 200) == -1, "rate: an HD format switches a DD disk only");
+  rate_fill(&m, 3000, DD, 144); rate_fill(&m, 3000, HD, 144);
+  CHECK(mfm_rate_decide(&m, false, 200) == -1 && mfm_rate_decide(&m, true, 200) == -1, "rate: mixed evidence never switches");
+  rate_fill(&a, 30000, AMB, 144);
+  CHECK(a.hd == 0 && a.dd == 0 && mfm_rate_decide(&a, false, 200) == -1, "rate: 4 us intervals (both densities) count for neither");
+  rate_fill(&few, 90, DD, 144);
+  CHECK(mfm_rate_decide(&few, false, 200) == -1, "rate: too little evidence never switches");
+  rate_fill(&d72, 30000, DD, 72);
+  CHECK(mfm_rate_decide(&d72, false, 200) == 1, "rate: thresholds follow the timer rate (72 ticks/us)");
+}
+
 int main(void)
 {
   test_crc();
@@ -677,6 +709,7 @@ int main(void)
   test_fat12();
   test_testimg();
   test_mfm_dd();
+  test_rate();
   test_fatimg();
   test_fatimg_dirs();
   test_fatimg_dd();

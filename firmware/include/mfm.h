@@ -99,4 +99,22 @@ void mfm_dec_push(mfm_dec_t *d, unsigned n);
  * back into sectors_out. Returns good sectors (18 on a clean track). */
 int mfm_decode_verify(const uint8_t *mfm, size_t mfm_len, uint8_t *sectors_out);
 
+/* ---- data rate of a write (720 KB DD / 1.44 MB HD) ----
+ * Classify a write's raw flux intervals: 1.5-3.5 us only occur at HD
+ * (500 kbit/s), 5.5-8.5 us only at DD (250 kbit/s); 4 us is both.
+ * tpu = timer ticks per microsecond. */
+typedef struct { uint32_t hd, dd; } mfm_rate_t;
+static inline void mfm_rate_add(mfm_rate_t *r, uint32_t dt, uint32_t tpu)
+{
+  if(dt >= tpu * 3u / 2u && dt < tpu * 7u / 2u) r->hd++;
+  else if(dt >= tpu * 11u / 2u && dt < tpu * 17u / 2u) r->dd++;
+}
+/* After a write: switch the disk's density? 1 = to DD, 0 = to HD, -1 = no.
+ * Only a FORMAT counts: the write must span at least MFM_FORMAT_MIN_MS (3/4 of
+ * a revolution; a format writes a whole track at once, a sector write lasts
+ * 10-20 ms), and the other density's intervals must outnumber the current
+ * one's 8 to 1, at least 100 of them. */
+#define MFM_FORMAT_MIN_MS 150u
+int mfm_rate_decide(const mfm_rate_t *r, bool is_dd, uint32_t gate_ms);
+
 #endif /* MFM_H */

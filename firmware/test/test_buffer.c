@@ -242,6 +242,9 @@ static void test_density(void)
   uint32_t before = buffer_dbg_marker_repaired;
   reboot();
   CHECK(buffer_dbg_marker_repaired == before + 1 && buffer_is_dd(), "a marker repair keeps DD");
+  memset(&g_flash[BUF_META_ADDR], 0xFF, SPIFLASH_SECTOR_SIZE);   /* meta sector lost: record gone too */
+  reboot();
+  CHECK(buffer_is_dd(), "a repair takes DD from the volume's boot sector when the record is gone");
   memcpy(&g_flash[BUF_META_ADDR + 64u], "TDSFAULT", 8);   /* a recorded fault */
   reboot();
   buffer_set_density(false);                   /* the disk is being formatted HD again */
