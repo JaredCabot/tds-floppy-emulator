@@ -9,16 +9,17 @@ under the Gotek name; this is an independent project, not affiliated with or
 endorsed by that brand or the original firmware's authors, and it contains none
 of their code.
 
-It reproduces the stock "buffer" workflow (the scope sees a 1.44 MB floppy
-whose contents live in the unit's SPI flash, and a USB stick moves files in and
-out) with better reliability and a few improvements. Written from the
+It reproduces the stock "buffer" workflow (the scope sees a 1.44 MB or 720 KB
+floppy whose contents live in the unit's SPI flash, and a USB stick moves files
+in and out) with better reliability and a few improvements. Written from the
 observable behaviour, the drive specification and bench measurements.
 **Status:** working on a **TDS 794D** (firmware v8.0e) and a **TDS 784D**
 (firmware v7.4e), each with its own emulator. Read, write, format, USB
 transfers, the buttons and LED, the first installation on a factory unit and
 the update from an earlier version are verified on the hardware: every file
 saved by the scope reads back byte-identical, through the internal disk and a
-USB round trip.
+USB round trip. 720 KB disks (1.1.0) are verified on the TDS 784D, switching
+both ways by the jumper and the scope's format.
 
 ## Manual and firmware
 
@@ -41,15 +42,17 @@ USB round trip.
   internal disk is kept.
 
 ## Using it
-The scope sees `fd0:` as an ordinary 1.44 MB floppy: read, save, format.
+The scope sees `fd0:` as an ordinary floppy, 1.44 MB or 720 KB: read, save,
+format.
 
 | Control | Action |
 |---|---|
-| **Right (lower as installed) button** - DATA IN, *put a disk in* | Replaces the internal disk with the next batch of files from the root of the USB stick (alphabetical, as many as fit in 1.44 MB; each sector verified as it is written). Press again for the next batch; wraps to the first after the last. Skips folders, hidden/system files and files over 1.44 MB. Long names appear on the scope as 8.3 short names (`TEK000~1.BMP`). |
+| **Right (lower as installed) button** - DATA IN, *put a disk in* | Replaces the internal disk with the next batch of files from the root of the USB stick (alphabetical, as many as fit on the disk, 1.44 MB or 720 KB; each sector verified as it is written). Press again for the next batch; wraps to the first after the last. Skips folders, hidden/system files and files larger than the disk. Long names appear on the scope as 8.3 short names (`TEK000~1.BMP`). |
 | **Left (upper as installed) button** - DATA OUT, *take the disk out* | Copies every file on the internal disk to the stick, keeping the original dates and any folders the scope made. Never overwrites: a clash is saved as `NAME_1.EXT`, `NAME_2.EXT`, ...; a file already there and identical is not copied twice. Each file is read back and compared; only if all are safely on the stick is the internal disk erased, blank for new data. Any failure leaves it untouched. |
 | **The same button again, while the LED flashes** - *cancel* | Stops the transfer at the next safe point; the LED gives one long blink. DATA OUT: any partly copied file is deleted, files already copied stay on the stick, the internal disk is not erased. DATA IN: the disk keeps the files loaded so far and the next press loads the same batch again (the disk's previous contents are gone: DATA IN erases it first). A firmware update cannot be cancelled. |
 | Inserting a stick | Does nothing until a button is pressed. Sticks may be FAT12/16/32 or exFAT, MBR or GPT partitioned; on exFAT, long names get Windows-style 8.3 names (`SCOPEC~1.BMP`). |
 | **Both buttons held 3 s** - *firmware update* | Red LED goes solid; release to install `UPDATE.UPD` from the stick (~5 s, safe against power loss). See [docs/13](docs/13-firmware-update.md). |
+| **Jumper JE, then format in the scope** - *720 KB disk* | Fitted: the scope formats the disk at 720 KB and the emulator follows, like a DD disk in a real drive; removed and formatted again: 1.44 MB. The disk keeps its density through power-off, updates, DATA IN and DATA OUT. With JE and the disk disagreeing, the scope reads the disk as unformatted until it formats it. See [docs/10](docs/10-read-write-path.md). |
 | Pressing a button while the scope is saving | Waits (LED flashing) until the scope has finished with the drive, then copies. Refused with the error blink if it is still busy after 15 s. |
 
 | LED | Meaning |
@@ -75,7 +78,8 @@ buttons, LED and transfers: [docs/11-usb.md](docs/11-usb.md).
 ## Other devices
 Nothing in the firmware is specific to the TDS beyond its settings, so it
 should also work in other devices that use this emulator (or a 26-pin slim
-floppy drive) with **1.44 MB PC-format (FAT12) disks**. What a device needs:
+floppy drive) with **1.44 MB or 720 KB PC-format (FAT12) disks**. What a
+device needs:
 
 - a 1.44 MB HD drive, or from firmware 1.1.0 a 720 KB DD drive (jumper JE
   fitted; the disk becomes DD when the device formats it);
@@ -100,6 +104,8 @@ devices, working or not, are welcome as GitHub issues.
   head never waits for flash on a track change.
 - Every sector loaded from the stick is verified as it is written.
 - A transfer can be cancelled with its own button.
+- 720 KB disks (1.1.0), switched like a real disk: fit jumper JE and format in
+  the scope. No settings file, no reboot.
 - A button press waits for the scope to finish with the drive instead of
   pulling the disk from under a save.
 - exFAT and GPT-partitioned sticks work; an unsupported stick (NTFS) is
