@@ -119,7 +119,10 @@ Tested 2026-09-27 on the TDS 784D with JE fitted: an HD disk switched to DD by
 itself on the scope's format (190 s, verified), then saves, a folder tree
 three levels deep, DATA OUT (all files byte-identical), DATA IN (a 716,800-byte
 file in 700 of 713 clusters, byte-identical) and 24 stress saves (identical,
-0 bad CRC, 0 lost, head wait 0.58 ms). Host tests: DD MFM track, DD volume
+0 bad CRC, 0 lost, head wait 0.58 ms). Then JE removed and the disk formatted
+again: it switched back to HD by itself (4,217 HD-only intervals, 0 DD), and
+saves and DATA OUT worked normally. The TDS reads HD OUT when it formats, so
+changing JE needs no reboot of the scope. Host tests: DD MFM track, DD volume
 build/read/limits/folders, density record through power cycles, rebuilds,
 repairs and the switch back. The TDS firmware supports both densities
 (docs/12).
