@@ -22,17 +22,23 @@ USB round trip.
 
 ## Manual and firmware
 
+- **Downloads:** the latest firmware is on the
+  [**Releases page**](https://github.com/JaredCabot/tds-floppy-emulator/releases)
+  (install image and update file, with checksums); what changed in each
+  version is in [CHANGELOG.md](CHANGELOG.md).
 - **Manual:** [TFE-0001-00 Floppy Disk Drive Emulator Instructions](docs/manual/TFE-0001-00_TDS_Floppy_Emulator_Instructions.pdf)
   (PDF), in the style of the Tektronix TDS manuals. Covers loading the
   firmware, fitting the emulator in the instrument, the buttons and
   indicators, USB flash drives, firmware updates, troubleshooting and
   specifications.
 - **Firmware, first installation:** [release/tdsfloppy_install.hex](release/tdsfloppy_install.hex)
-  (version 1.0.0, bootloader and firmware in one file; checksum in
+  (version 1.1.0, bootloader and firmware in one file; checksum in
   [release/README.md](release/README.md)). Program it once over USB with the
   Artery ISP Programmer, archived in [third-party/](third-party/), as
-  described in the manual (*Load the Firmware*, page 2-1). Later versions
-  install from a USB flash drive.
+  described in the manual (*Load the Firmware*, page 2-1).
+- **Firmware, update:** [release/UPDATE.UPD](release/UPDATE.UPD): copy it to a
+  USB flash drive and hold both buttons for 3 seconds (manual page 3-3); the
+  internal disk is kept.
 
 ## Using it
 The scope sees `fd0:` as an ordinary 1.44 MB floppy: read, save, format.

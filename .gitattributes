@@ -15,6 +15,7 @@ Makefile text eol=lf
 *.hex text
 # released images are stored byte for byte, so their published SHA-256 holds
 release/*.hex binary
+release/*.UPD binary
 *.img binary
 *.pdf binary
 *.png binary

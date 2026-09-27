@@ -142,3 +142,17 @@ whether the image was installed from `UPDATE.UPD` or over SWD, since unused
 flash reads 0xFF. `tools/button.ps1 status` shows version, build ID and the
 flash-fault flag. `release/README.md` lists the build ID of each release;
 `tools/release_refresh.py` updates `release/` from a final build.
+
+## Publishing a release
+
+1. Set the new version in `include/version.h` (both `FW_VERSION` and
+   `FW_VERSION_STR`) and add its entry to `CHANGELOG.md`.
+2. `python tools/release_refresh.py`: builds, runs the host tests, copies
+   `tdsfloppy_install.hex` and `UPDATE.UPD` into `release/` (checked against
+   the build) and writes their checksums into `release/README.md`.
+3. Commit and push `main`, tag it `vX.Y.Z`, and create the GitHub Release from
+   the tag with the changelog entry as notes and both files (and the manual)
+   attached: `gh release create vX.Y.Z release/tdsfloppy_install.hex
+   release/UPDATE.UPD docs/manual/... --notes-file ...`.
+4. Download the attached files anonymously and compare their SHA-256 with
+   `release/README.md`.
