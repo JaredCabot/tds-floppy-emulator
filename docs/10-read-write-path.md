@@ -135,6 +135,11 @@ build/read/limits/folders, density record through power cycles, rebuilds,
 repairs and the switch back. The TDS firmware supports both densities
 (docs/12).
 
+## SPI flash speed (1.2.0)
+The driver's chip select and byte transfer are register-level (spiflash.c),
+inlined in the bulk read, AAI programming and busy-poll loops. A 9 KB track
+load takes 12.2 ms (27.5 ms in 1.1.0), and transfers are faster (docs/11).
+
 ## Track in RAM (floppy.c)
 Only the track under the head is live in RAM, **raw** (9216 B + 18 data CRCs),
 not pre-encoded MFM (which took 25.6 KB and left no room for writes or USB).

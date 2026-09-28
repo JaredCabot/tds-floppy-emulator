@@ -5,6 +5,8 @@
  * the scope sees no disk, then a disk change.
  */
 #include "xfer.h"
+#include "status.h"
+#include "version.h"
 #include "usbhost.h"
 #include "buffer.h"
 #include "floppy.h"
@@ -13,6 +15,7 @@
 #include "spiflash.h"
 #include "board.h"
 #include "buttons.h"
+#include "clock.h"
 #include "ff.h"
 #include <string.h>
 
@@ -20,6 +23,13 @@
 static uint32_t disk_bytes(void) { return fatimg_capacity(buffer_is_dd()); }
 
 volatile uint32_t xfer_dbg_files, xfer_dbg_bytes;
+/* The last transfer's time, in ms, by where it went (SWD; tools/button.ps1):
+ * waiting for the host to leave the drive, the flash drive (f_read/f_write),
+ * and the internal flash (programming, verifying, reading, erasing). */
+volatile uint32_t xfer_dbg_ms_wait, xfer_dbg_ms_usb, xfer_dbg_ms_flash;
+#define TIC(t)      uint32_t t = flpy_dbg_ms
+#define TOC(t, acc) ((acc) += flpy_dbg_ms - (t))
+static void timing_reset(void) { xfer_dbg_ms_wait = xfer_dbg_ms_usb = xfer_dbg_ms_flash = 0; }
 
 static FATFS   s_fs;
 static FIL     s_fil;
@@ -28,6 +38,12 @@ static DIR     s_dir;
  * (flpy_scratch): the FAT12 builder or reader, one sector buffer, and for DATA
  * OUT the stick path and the stack of folders being walked. */
 #define XFER_DEPTH     8u                  /* folder levels copied (root = 0) */
+/* USB data moves in chunks of up to XBUF bytes: one mass-storage command for 16
+ * sectors instead of 16. The chunk lives in the floppy's second track buffer,
+ * idle while the disk is ejected (flpy_scratch2). */
+#define XBUF           8192u
+_Static_assert(XBUF <= FLPY_SCRATCH_SIZE, "chunk fits a track buffer");
+static uint8_t *s_xbuf;
 #define XFER_NAME_MAX  17u                 /* "NAME_999.EXT/" + slack */
 #define XFER_PATH_MAX  (3u + XFER_DEPTH * XFER_NAME_MAX + XFER_NAME_MAX + 1u)
 typedef struct {
@@ -137,6 +153,7 @@ static int next_file(const char *after, FILINFO *best)
     if(fi.fattrib & (AM_DIR | AM_HID | AM_SYS)) continue;
     if(fi.fname[0] == '.') continue;                /* dot files: hidden by convention (macOS ._*) */
     if(same_name(fi.fname, UPD_FILE_NAME)) continue; /* the firmware update is not a scope file */
+    if(same_name(fi.fname, STATUS_FILE_NAME)) continue;   /* nor is the status report */
     /* short (8.3) names throughout: all the scope can use, and FatFs keeps them in
      * altname even when the file has a long name (e.g. TEK00000_1.BMP -> TEK000~1.BMP) */
     if(fi.fsize > disk_bytes() || name_cmp(sfn(&fi), after) <= 0) continue;
@@ -160,11 +177,20 @@ static xfer_result_t copy_in(fatimg_build_t *b, const FILINFO *fi, const char n8
   for(uint32_t left = fi->fsize; left; )
   {
     if(cancelled()) { f_close(&s_fil); return XFER_CANCELLED; }   /* (not committed: not on the disk) */
-    if(f_read(&s_fil, s_sec, sizeof s_sec, &got) != FR_OK || got == 0) { f_close(&s_fil); return XFER_USB_ERROR; }
-    buffer_program(lba, 0, s_sec, got);
-    buffer_read_lba(lba++, s_ws->chk);
-    if(memcmp(s_ws->chk, s_sec, got) != 0) { f_close(&s_fil); return XFER_VERIFY_FAILED; }
-    left -= got < left ? got : left;
+    uint32_t want = left < XBUF ? left : XBUF;
+    TIC(tu);
+    if(f_read(&s_fil, s_xbuf, want, &got) != FR_OK || got != want) { f_close(&s_fil); return XFER_USB_ERROR; }
+    TOC(tu, xfer_dbg_ms_usb);
+    TIC(tf);
+    for(uint32_t off = 0; off < got; off += FATIMG_SECTOR)   /* each sector verified */
+    {
+      uint32_t n = got - off < FATIMG_SECTOR ? got - off : FATIMG_SECTOR;
+      buffer_program(lba, 0, s_xbuf + off, n);
+      buffer_read_lba(lba++, s_ws->chk);
+      if(memcmp(s_ws->chk, s_xbuf + off, n) != 0) { f_close(&s_fil); return XFER_VERIFY_FAILED; }
+    }
+    TOC(tf, xfer_dbg_ms_flash);
+    left -= got;
     xfer_dbg_bytes += got;
   }
   f_close(&s_fil);
@@ -204,11 +230,17 @@ xfer_result_t xfer_in(void)
   }
 
   cancel_arm(BUTTON_RIGHT);
+  timing_reset();
+  TIC(tw);
   if(!flpy_eject(cancelled)) { f_mount(0, "0:", 0); cancel_arm(0); return why(XFER_BUSY); }
+  TOC(tw, xfer_dbg_ms_wait);
   s_ws = flpy_scratch();
+  s_xbuf = flpy_scratch2();
   strcpy(s_ws->page_start, s_last);                  /* a failed page is reloaded next time */
   fatimg_build_t *b = &s_ws->b;
-  buffer_begin_rebuild();
+  TIC(te);
+  buffer_begin_rebuild();                            /* (chip erase) */
+  TOC(te, xfer_dbg_ms_flash);
   fatimg_build_begin(b, &buffer_fatimg_io, buffer_is_dd());
   do {
     if(!disk_name(b, sfn(&fi), n83)) { strcpy(s_last, sfn(&fi)); continue; }   /* no free name: skip */
@@ -259,12 +291,22 @@ static int same_as_disk(const fatimg_file_t *f)
   fatimg_pos_t pos;
   uint32_t lba, n;
   fatimg_pos_start(&pos, f);
-  while(res == 1 && (n = fatimg_pos_next(r, &pos, &lba)) != 0)
+  while(res == 1 && pos.left)                       /* the stick's copy, a chunk at a time */
   {
+    uint32_t want = pos.left < XBUF ? pos.left : XBUF;
     if(cancelled()) { res = -1; break; }
-    buffer_read_lba(lba, s_sec);
-    if(f_read(&s_fil, s_ws->chk, n, &n2) != FR_OK) res = -1;
-    else if(n2 != n || memcmp(s_sec, s_ws->chk, n) != 0) res = 0;
+    TIC(tu);
+    if(f_read(&s_fil, s_xbuf, want, &n2) != FR_OK) { res = -1; break; }
+    TOC(tu, xfer_dbg_ms_usb);
+    if(n2 != want) { res = 0; break; }
+    TIC(tf);
+    for(uint32_t off = 0; off < want; off += n)
+    {
+      if((n = fatimg_pos_next(r, &pos, &lba)) == 0) { res = 0; break; }   /* chain short */
+      buffer_read_lba(lba, s_sec);
+      if(memcmp(s_sec, s_xbuf + off, n) != 0) { res = 0; break; }
+    }
+    TOC(tf, xfer_dbg_ms_flash);
   }
   if(res == 1 && pos.left) res = 0;
   f_close(&s_fil);
@@ -321,12 +363,23 @@ static xfer_result_t copy_file(const fatimg_file_t *f)
   fatimg_pos_t pos;
   uint32_t lba, n;
   fatimg_pos_start(&pos, f);
-  while((n = fatimg_pos_next(r, &pos, &lba)) != 0)
+  for(;;)                                           /* gather up to XBUF, write it at once */
   {
+    uint32_t fill = 0;
+    TIC(tf);
+    while(fill + FATIMG_SECTOR <= XBUF && (n = fatimg_pos_next(r, &pos, &lba)) != 0)
+    {
+      buffer_read_lba(lba, s_xbuf + fill);
+      fill += n;
+      if(n < FATIMG_SECTOR) break;                   /* the file's last sector */
+    }
+    TOC(tf, xfer_dbg_ms_flash);
+    if(fill == 0) break;
     if(cancelled()) { res = XFER_CANCELLED; break; }
-    buffer_read_lba(lba, s_sec);
-    if(f_write(&s_fil, s_sec, n, &n2) != FR_OK || n2 != n) { res = XFER_USB_ERROR; break; }
-    xfer_dbg_bytes += n;
+    TIC(tu);
+    if(f_write(&s_fil, s_xbuf, fill, &n2) != FR_OK || n2 != fill) { res = XFER_USB_ERROR; break; }
+    TOC(tu, xfer_dbg_ms_usb);
+    xfer_dbg_bytes += fill;
   }
   if(f_close(&s_fil) != FR_OK) res = XFER_USB_ERROR;
   if(res == XFER_OK && pos.left) res = XFER_BAD_IMAGE;          /* chain shorter than the file */
@@ -392,16 +445,112 @@ xfer_result_t xfer_out(void)
   xfer_dbg_files = xfer_dbg_bytes = 0;
   { xfer_result_t m = mount_stick(); if(m != XFER_OK) return m; }
   cancel_arm(BUTTON_LEFT);
+  timing_reset();
+  TIC(tw);
   if(!flpy_eject(cancelled)) { f_mount(0, "0:", 0); cancel_arm(0); return why(XFER_BUSY); }
+  TOC(tw, xfer_dbg_ms_wait);
   s_ws = flpy_scratch();
+  s_xbuf = flpy_scratch2();
   xfer_result_t res = copy_out();                    /* every file written AND verified */
   cancel_arm(0);
   f_mount(0, "0:", 0);
   /* Only when every file is safely on the stick: blank the internal disk, like
    * taking the floppy out and putting in a fresh one. Otherwise keep it. */
+  TIC(te);
   if(res == XFER_OK) buffer_format();
+  TOC(te, xfer_dbg_ms_flash);
   flpy_insert();                                     /* disk change either way */
   return res;
+}
+
+/* ---- status report (both buttons, no UPDATE.UPD; docs/13, status.h) ---- */
+
+extern volatile uint32_t dbg_fw_build, dbg_reset_cause;
+extern volatile uint32_t buffer_dbg_writebacks, buffer_dbg_recovered, buffer_dbg_marker_repaired;
+static const char *s_last_what, *s_last_res;
+static uint32_t s_last_files, s_last_bytes;
+
+static const char *result_text(xfer_result_t r)
+{
+  switch(r)
+  {
+    case XFER_OK:            return "OK";
+    case XFER_NO_STICK:      return "no flash drive";
+    case XFER_USB_ERROR:     return "USB error";
+    case XFER_BAD_IMAGE:     return "internal disk unreadable";
+    case XFER_NOTHING:       return "nothing to load";
+    case XFER_VERIFY_FAILED: return "verification failed";
+    case XFER_BUSY:          return "drive busy";
+    case XFER_BAD_FORMAT:    return "flash drive format not supported";
+    case XFER_CANCELLED:     return "cancelled";
+    default:                 return "-";
+  }
+}
+
+void xfer_note(const char *what, xfer_result_t r)
+{
+  s_last_what = what; s_last_res = result_text(r);
+  s_last_files = xfer_dbg_files; s_last_bytes = xfer_dbg_bytes;
+}
+
+static xfer_result_t write_status(void)
+{
+  static status_t st;
+  if(!flpy_eject(NULL)) return XFER_BUSY;           /* a still disk: consistent counts */
+  s_ws = flpy_scratch();
+  s_xbuf = flpy_scratch2();
+  memset(&st, 0, sizeof st);
+  st.version = FW_VERSION_STR;
+  st.build = dbg_fw_build;
+  st.board = UPD_BOARD;
+  for(unsigned i = 0; i < 3; i++) st.uid[i] = ((const volatile uint32_t *)0x1FFFF7E8u)[i];
+  st.flash_id = spiflash_read_jedec_id();
+  st.hick = clock_on_hick;
+  st.dd = buffer_is_dd();
+  fatimg_read_t *r = &s_ws->r;
+  if(fatimg_open(r, &buffer_fatimg_io))
+  {
+    fatimg_file_t f;
+    int depth = 0;
+    st.disk_ok = true;
+    fatimg_dir_root(&s_ws->dirs[0]);
+    while(depth >= 0)                               /* every file, folders included */
+    {
+      if(!fatimg_dir_next(r, &s_ws->dirs[depth], &f)) { depth--; continue; }
+      if(f.attr & FATIMG_ATTR_DIR)
+      {
+        st.dirs++;
+        if(depth + 1 < (int)XFER_DEPTH) fatimg_dir_sub(r, &s_ws->dirs[++depth], f.first_cl);
+      }
+      else { st.files++; st.used_bytes += f.size; }
+    }
+    for(uint16_t cl = 2; cl <= r->max_cl; cl++)
+      if(fatimg_fat_entry(r, cl) == 0) st.free_bytes += FATIMG_SECTOR * r->spc;
+  }
+  st.fault = buffer_fault();
+  st.writebacks = buffer_dbg_writebacks;
+  st.recovered = buffer_dbg_recovered;
+  st.repaired = buffer_dbg_marker_repaired;
+  st.reset_cause = dbg_reset_cause;
+  st.uptime_ms = flpy_dbg_ms;
+  st.stick_fs = s_fs.fs_type == FS_EXFAT ? "exFAT" : s_fs.fs_type == FS_FAT32 ? "FAT32"
+              : s_fs.fs_type == FS_FAT16 ? "FAT16" : "FAT12";
+  st.stick_bytes = (uint64_t)(s_fs.n_fatent - 2u) * s_fs.csize * FATIMG_SECTOR;
+  st.last_what = s_last_what; st.last_result = s_last_res;
+  st.last_files = s_last_files; st.last_bytes = s_last_bytes;
+
+  size_t n = status_text((char *)s_xbuf, XBUF, &st);
+  UINT w = 0;
+  FRESULT fr = f_open(&s_fil, "0:/" STATUS_FILE_NAME, FA_CREATE_ALWAYS | FA_WRITE);
+  if(fr == FR_OK)
+  {
+    fr = f_write(&s_fil, s_xbuf, (UINT)n, &w);
+    FRESULT fc = f_close(&s_fil);
+    if(fr == FR_OK) fr = fc;
+  }
+  flpy_insert();
+  xfer_dbg_files = 1; xfer_dbg_bytes = w;
+  return (fr == FR_OK && w == n) ? XFER_STATUS : XFER_USB_ERROR;
 }
 
 /* ---- firmware update (docs/13, include/update.h) ---- */
@@ -416,10 +565,10 @@ static xfer_result_t stage_update(const upd_header_t *h)
   /* 1. the file is intact and an app for this board: nothing touched yet */
   for(uint32_t off = 0; off < h->length; off += got)
   {
-    uint32_t n = h->length - off < sizeof s_sec ? h->length - off : sizeof s_sec;
-    if(f_read(&s_fil, s_sec, n, &got) != FR_OK || got != n) return XFER_USB_ERROR;
-    if(off == 0 && !upd_vectors_ok(s_sec, h->length)) return XFER_BAD_IMAGE;
-    crc = upd_crc32(crc, s_sec, n);
+    uint32_t n = h->length - off < XBUF ? h->length - off : XBUF;
+    if(f_read(&s_fil, s_xbuf, n, &got) != FR_OK || got != n) return XFER_USB_ERROR;
+    if(off == 0 && !upd_vectors_ok(s_xbuf, h->length)) return XFER_BAD_IMAGE;
+    crc = upd_crc32(crc, s_xbuf, n);
   }
   if(crc != h->image_crc) return XFER_BAD_IMAGE;
 
@@ -428,9 +577,9 @@ static xfer_result_t stage_update(const upd_header_t *h)
   if(f_lseek(&s_fil, sizeof *h) != FR_OK) return XFER_USB_ERROR;
   for(uint32_t off = 0; off < h->length; off += got)
   {
-    uint32_t n = h->length - off < sizeof s_sec ? h->length - off : sizeof s_sec;
-    if(f_read(&s_fil, s_sec, n, &got) != FR_OK || got != n) return XFER_USB_ERROR;
-    spiflash_program(UPD_STAGE_DATA + off, s_sec, n);
+    uint32_t n = h->length - off < XBUF ? h->length - off : XBUF;
+    if(f_read(&s_fil, s_xbuf, n, &got) != FR_OK || got != n) return XFER_USB_ERROR;
+    spiflash_program(UPD_STAGE_DATA + off, s_xbuf, n);
     xfer_dbg_bytes += n;
   }
   crc = 0;
@@ -456,8 +605,15 @@ xfer_result_t xfer_update(void)
   UINT got;
   xfer_dbg_files = xfer_dbg_bytes = 0;
   { xfer_result_t m = mount_stick(); if(m != XFER_OK) return m; }
+  timing_reset();
   FRESULT fr = f_open(&s_fil, "0:/" UPD_FILE_NAME, FA_READ);
-  if(fr != FR_OK) { f_mount(0, "0:", 0); return fr == FR_NO_FILE ? XFER_NOTHING : XFER_USB_ERROR; }
+  if(fr == FR_NO_FILE)                             /* no update: report the status instead */
+  {
+    xfer_result_t r = write_status();
+    f_mount(0, "0:", 0);
+    return r;
+  }
+  if(fr != FR_OK) { f_mount(0, "0:", 0); return XFER_USB_ERROR; }
   xfer_result_t res = XFER_BAD_IMAGE;
   if(f_read(&s_fil, &h, sizeof h, &got) == FR_OK && got == sizeof h && upd_header_ok(&h)
      && f_size(&s_fil) == sizeof h + h.length)
@@ -466,6 +622,7 @@ xfer_result_t xfer_update(void)
     else
     {
       s_ws = flpy_scratch();
+      s_xbuf = flpy_scratch2();
       res = stage_update(&h);
       if(res != XFER_OK) flpy_insert();            /* carry on with this firmware */
     }

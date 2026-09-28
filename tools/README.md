@@ -31,7 +31,7 @@ start with `init`, `halt` or `reg`: put OpenOCD commands in a `-f` script.
 | Tool | What |
 |---|---|
 | `fdstat.ps1 [-Steps N]` | Floppy status: uptime, INDEX/steps/selects, current track, load/store times, write counters, self-check counters (must be 0), track load/store trace, step log |
-| `button.ps1 in\|out\|status` | Press the right (in) / left (out) button over SWD and report the result; `status` shows stick-ready and the last transfer |
+| `button.ps1 in\|out\|both\|status` | Press the right (in) / left (out) / both buttons (update, or the status report) over SWD and report the result with its time; after an update it detects the restart, identifies the installed image and keeps the SWD tools' guard truthful, split into waiting, USB and internal flash; `status` shows version, build ID, density, stick-ready and the last transfer |
 | `gatelog.ps1` | First 64 write gates (track, ID/data fields decoded, visible) and first 64 steps since reset - used to debug formatting |
 | `reformat.ps1` | Erase the internal disk to a blank FAT12 volume and restart the firmware |
 | `tryread.ps1 [-Poke "..."]` | Raise DISK CHANGE (so the TDS re-reads the disk) and make the TDS access fd0:; optional extra OpenOCD pokes |
@@ -40,6 +40,7 @@ start with `init`, `halt` or `reg`: put OpenOCD commands in a `-f` script.
 | `benchlock.py` | Shared bench lock (see above); `locktest.py N` holds it for testing |
 | `stick.ps1 put FILE NAME` / `get NAME FILE` | Put a PC file onto / get a file from the USB stick in the emulator, through the firmware's SWD hook (the floppy keeps running). Used to place `UPDATE.UPD` for unattended update tests |
 | `mkupdate.py BIN VERSION_H OUT` | Build `UPDATE.UPD` (run by `make`) |
+| `identify_image.py DUMP` | Which firmware is in a dump of the application area: the current build, a released version (from the git tags), or unrecognised. Used by `button.ps1 both` after an update restarts the emulator |
 | `check_image_end.py ELF BIN` | Run by `make`: fails the build if the image length the firmware computes its build ID over differs from the `.bin` |
 | `release_refresh.py` | Runs `make` and `make test` (stops on failure), then copies `tdsfloppy_install.hex` into `release/`, verify its bootloader and firmware regions against the build, and update the version, build ID, size and SHA-256 in `release/README.md` |
 | `dirtest.py make` / `check` / `again` | DATA OUT with folders: the scope makes folders on fd0: and saves into them; after DATA OUT every file must be on the stick in its folder, byte for byte; `again` checks an identical re-save makes no `_1` duplicate |

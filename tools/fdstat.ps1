@@ -8,8 +8,8 @@ Set-Location $fw
 
 $a = @{}
 if (-not (Test-Path build\flashed.bin) -or (Get-FileHash build\tdsfloppy.bin).Hash -ne (Get-FileHash build\flashed.bin).Hash) { "FIRMWARE MISMATCH: build\tdsfloppy.bin is not the image last flashed - run make flash-swd first (symbol addresses would be wrong)."; exit 3 }
-arm-none-eabi-nm build\tdsfloppy.elf | Select-String ' (flpy_dbg_\w+|s_cyl|s_head|s_selected)$' |
-  ForEach-Object { $p = $_.Line -split ' '; $a[$p[2]] = '0x' + $p[0] }
+arm-none-eabi-nm build\tdsfloppy.elf | Select-String ' (flpy_dbg_\w+|s_cyl|s_head|s_selected)(\.lto_priv\.\d+)?$' |   # (LTO renames statics)
+  ForEach-Object { $p = $_.Line -split ' '; $a[($p[2] -replace '\.lto_priv\.\d+$','')] = '0x' + $p[0] }
 
 $cfg = @"
 init

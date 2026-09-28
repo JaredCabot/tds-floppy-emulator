@@ -4,6 +4,7 @@
  * Compile with -DMFM_HOST_TEST.
  */
 #include "mfm.h"
+#include "status.h"
 #include "fat12.h"
 #include "testimg.h"
 #include "fatimg.h"
@@ -619,6 +620,9 @@ static void test_fatimg_dd(void)
         && bs[22] == 3 && bs[24] == 9 && bs[510] == 0x55, "DD: the BPB describes a 720 KB volume");
   CHECK(fatimg_open(&r, &io) && r.spc == 2 && r.media == 0xF9 && r.data_lba == 14, "DD: the reader opens it (2 sectors per cluster)");
   CHECK(fatimg_valid(&r, &io), "DD: fatimg_valid (media F9 at the start of both FATs)");
+  CHECK(fatimg_fat_entry(&r, 0) == 0xFF7 && fatimg_fat_entry(&r, 1) == 0xFF7
+        && fatimg_fat_entry(&r, (uint16_t)(r.max_cl + 1u)) == 0xFF7 && fatimg_fat_entry(&r, r.max_cl) == 0,
+        "fatimg_fat_entry: outside 2..max_cl reads as bad, never free");
   fatimg_open(&r, &io);
   fatimg_file_t f;
   unsigned nf = 0, bad = 0;
@@ -701,6 +705,51 @@ static void test_rate(void)
   CHECK(mfm_rate_decide(&d72, false, 200) == 1, "rate: thresholds follow the timer rate (72 ticks/us)");
 }
 
+/* the status report EMUSTAT.TXT (status.c) */
+static void test_status(void)
+{
+  static char out[4096];
+  status_t st;
+  memset(&st, 0, sizeof st);
+  st.version = "1.2.0"; st.build = 0xd63f10ebu; st.board = "SFRC2D.B";
+  st.uid[0] = 0x11223344u; st.uid[1] = 0x55667788u; st.uid[2] = 0x99AABBCCu;
+  st.flash_id = 0xBF2541u;
+  st.disk_ok = true; st.files = 12; st.dirs = 1; st.used_bytes = 44032; st.free_bytes = 1413632;
+  st.writebacks = 303; st.reset_cause = 0x0C000000u; st.uptime_ms = 5025000u;
+  st.stick_fs = "exFAT"; st.stick_bytes = 7751090176ull;
+  st.last_what = "DATA OUT"; st.last_result = "OK"; st.last_files = 5; st.last_bytes = 19682;
+  size_t n = status_text(out, sizeof out, &st);
+  CHECK(n == strlen(out) && n > 400, "status: text written, NUL-terminated");
+  CHECK(strstr(out, "Firmware version  : 1.2.0\r\n") && strstr(out, "Build ID          : D63F10EB\r\n"),
+        "status: version and build ID");
+  CHECK(strstr(out, "MCU unique ID     : 99AABBCC-55667788-11223344") && strstr(out, "SPI flash ID      : BF2541"),
+        "status: unit identity");
+  CHECK(strstr(out, "Clock             : 8 MHz crystal\r\n") != NULL, "status: clock source (crystal)");
+  CHECK(strstr(out, "Density           : 1.44 MB (HD)") && strstr(out, "Files             : 12\r\n") && strstr(out, "Folders           : 1\r\n")
+        && strstr(out, "Free              : 1,413,632 bytes"), "status: disk, with thousands separators");
+  CHECK(strstr(out, "Last reset        : power-on") && strstr(out, "Uptime            : 1 h 23 min 45 s"),
+        "status: reset cause and uptime");
+  CHECK(strstr(out, "Capacity          : 7,751,090,176 bytes") && strstr(out, "Transfer          : DATA OUT, OK, 5 files, 19,682 bytes"),
+        "status: stick and last transfer");
+  CHECK(strstr(out, "\r\n") && !strstr(out, "\n\n"), "status: CRLF lines only");
+
+  st.dd = true; st.dirs = 3; st.fault = true; st.hick = true; st.reset_cause = 0x34000000u;   /* watchdog + sw + pin */
+  st.last_what = NULL; st.disk_ok = false;
+  status_text(out, sizeof out, &st);
+  CHECK(strstr(out, "720 KB (DD)") && strstr(out, "YES: save the files") && strstr(out, "Last reset        : watchdog")
+        && strstr(out, "None since power-on") && strstr(out, "not a readable FAT12 disk"),
+        "status: DD, fault, watchdog first, no transfer, unreadable disk");
+  CHECK(strstr(out, "Clock             : internal oscillator") != NULL, "status: clock source (crystal failed)");
+  CHECK(strcmp(status_reset_text(0x10000000u), "software (update or restart)") == 0
+        && strcmp(status_reset_text(0x04000000u), "reset pin") == 0 && strcmp(status_reset_text(0), "unknown") == 0,
+        "status: reset cause words");
+
+  memset(out, 'x', sizeof out);
+  n = status_text(out, 20, &st);
+  CHECK(n == 19 && out[19] == 0 && out[20] == 'x', "status: a small buffer is cut off safely");
+  CHECK(status_text(out, 0, &st) == 0 && out[20] == 'x', "status: a zero-size buffer writes nothing");
+}
+
 int main(void)
 {
   test_crc();
@@ -710,6 +759,7 @@ int main(void)
   test_testimg();
   test_mfm_dd();
   test_rate();
+  test_status();
   test_fatimg();
   test_fatimg_dirs();
   test_fatimg_dd();

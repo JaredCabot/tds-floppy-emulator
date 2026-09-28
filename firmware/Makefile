@@ -65,6 +65,9 @@ OBJ := $(addprefix $(BUILD)/,$(SRC_C:.c=.o) $(SRC_S:.s=.o))
 # AT32F415 is Cortex-M4 WITHOUT an FPU (at32f415.h: __FPU_PRESENT 0) -> soft float.
 CPU := -mcpu=cortex-m4 -mthumb -mfloat-abi=soft
 DEFS := -D$(PART) -DUSE_STDPERIPH_DRIVER
+# Link-time optimisation of the firmware (not the bootloader); per-file optimisation
+# levels are kept. Default from 1.2.0 (docs/06); LTO= builds without it.
+LTO ?= -flto
 OPT := -O2 -g3   # -Og made track rebuilds too slow for the host's seek-verify
 
 CFLAGS := $(CPU) $(DEFS) $(INCLUDES) $(OPT) \
@@ -86,14 +89,14 @@ all: $(BUILD)/$(TARGET).bin $(BUILD)/$(TARGET).hex $(BUILD)/boot.bin $(BUILD)/UP
 SPEED_SRC := src/floppy.c src/mfm.c src/buffer.c src/spiflash.c
 $(BUILD)/%.o: %.c
 	@$(call MKDIR,$(dir $@))
-	$(CC) $(CFLAGS) $(if $(filter $<,$(SPEED_SRC)),,-Os) -c $< -o $@
+	$(CC) $(CFLAGS) $(if $(filter $<,$(SPEED_SRC)),,-Os) $(LTO) -c $< -o $@
 
 $(BUILD)/%.o: %.s
 	@$(call MKDIR,$(dir $@))
 	$(CC) $(ASFLAGS) -c $< -o $@
 
 $(BUILD)/$(TARGET).elf: $(OBJ) $(LDSCRIPT)
-	$(CC) $(OBJ) $(LDFLAGS) -o $@
+	$(CC) $(OBJ) $(LDFLAGS) $(LTO) -o $@
 
 $(BUILD)/$(TARGET).bin: $(BUILD)/$(TARGET).elf
 	$(OBJCOPY) -O binary $< $@
@@ -142,7 +145,7 @@ clean:
 .PHONY: test
 test:
 	gcc -std=gnu11 -Wall -Wextra -DMFM_HOST_TEST -Iinclude -Itest \
-	  test/test_mfm.c test/testimg.c src/mfm.c src/fat12.c src/fatimg.c src/update.c src/buttons.c -o $(BUILD)/test_mfm.exe
+	  test/test_mfm.c test/testimg.c src/mfm.c src/fat12.c src/fatimg.c src/update.c src/buttons.c src/status.c -o $(BUILD)/test_mfm.exe
 	$(BUILD)/test_mfm.exe
 	gcc -std=gnu11 -Wall -Wextra -DBUFFER_HOST_TEST -Iinclude -Itest \
 	  test/test_buffer.c src/buffer.c src/fatimg.c src/fat12.c src/update.c -o $(BUILD)/test_buffer.exe

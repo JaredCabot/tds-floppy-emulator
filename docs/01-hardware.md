@@ -15,6 +15,37 @@ of truth for code; the tables here are the human-readable view of the same data.
 | P1  | 26-pin FFC | Slimline floppy bus to host (scope) |
 | P3  | USB-A | USB host port (the stick) |
 
+## Electrical notes (review 2026-09-28, against DS_AT32F415 V2.02)
+
+Two limits of the board design, the same with any firmware:
+
+- **SEL (PA0), STEP (PA1) and DIR (PB0) are on pins that are not 5 V
+  tolerant, and a host that drives them high lifts the 3.3 V rail.** These
+  three pins' absolute maximum is 4.0 V (DS Table 6; the pin table, pp. 26-27,
+  marks them I/O without FT). Above the rail, each pin's protection diode
+  conducts into the 3.3 V rail. With only the board's 1 k pull-ups to 5 V this
+  is about 1 mA per pin and the rail stays at 3.3 V. A host that drives the
+  lines high itself pushes much more. Measured 2026-09-28, unit in a TDS 794D:
+  the three pins at about 4.4 V and the 3.3 V rail at 3.8 V; the same unit on
+  a bench 5 V supply with no host: 3.3 V. The regulator (U4, AMS1117-3.3) can
+  source current but not sink it, so once the injected current exceeds what
+  the MCU and flash draw, the rail floats up. That puts the AT32F415 and the
+  SST25VF016B above their 3.6 V operating limit (both 4.0 V absolute maximum)
+  and the three pins above theirs. Units have run like this for years, with
+  any firmware, but it is outside the datasheets. Hardware fix: a series
+  resistor of about 1 k between each of the three lines and its pin, which
+  limits each to about 1 mA, well below the MCU's own draw, so the rail stays
+  in regulation. Moving the pull-ups to 3.3 V does not help when the host
+  drives the lines itself. An SWD probe's VTref reads the raised rail too.
+  SIDE1 (PB4), WGATE (PB9) and WDATA (PA8) are on 5 V-tolerant pins. Since
+  1.2.0 the firmware leaves the MCU's internal pull-ups off on all six inputs,
+  as the datasheet requires above VDD + 0.3 V (5.3, I/O static
+  characteristics, note 3).
+- **U1 (74AHC04) runs from 5 V but is driven by the 3.3 V MCU.** At 5 V an AHC
+  input is only guaranteed high above 0.7 x VCC, about 3.5 V. It works because
+  the real threshold is near half the supply, but it is not guaranteed. A
+  74AHCT04 (TTL inputs, high above 2.0 V) is a drop-in replacement.
+
 ## Floppy interface - inputs to MCU (from host)
 | MCU pin | Signal | Notes |
 |---------|--------|-------|
@@ -101,11 +132,15 @@ firmware sees only the internal select net SEL (PA0, also the green LED).
 | **S1** | MO1 1-2 | SEL driven by the interface's DRIVE SELECT line | Required for the TDS; tested |
 | **MO** | MO1 2-3 | SEL driven by MOTOR ON instead (hosts that enable a drive by motor-on alone) | Works without firmware changes (SEL is SEL), untested, not needed on the TDS; the green LED then follows motor-on |
 | **JE** | JE1 1-2 | HD OUT tied to GND: tells the host "2DD (720 KB)" | **Supported from 1.1.0.** Off: 1.44 MB HD disks (HD OUT floats high). Fitted: 720 KB DD; the disk becomes DD when the host formats it (docs/10). The MCU cannot read this jumper: pin 9 goes only to a 1 k pull-up and JE |
-| **JD** | JD1 1-2 | DINST ("disk installed") tied to GND permanently | Not used by the TDS, which detects the disk through READY and DISK CHANGE (driven by the firmware, "no disk" during transfers); a permanent "disk installed" would contradict that. Leave off |
+| **JD** | JD1 1-2 | Pin 11 tied to GND (net DINST on the schematic) | Not used. Pin 11 is not connected in the TEAC FD-05HF spec (docs/09); generic 26-pin tables give it as density select (/REDWC), driven by the host. The MCU does not see it and the TDS detects the disk through READY and DISK CHANGE. Leave off |
 
 MO1 is one 3-pin header: pin 2 (SEL) is common, so S1 and MO are the two
-positions of the same jumper. DINST is connector pin 11 (MTRON pin 10, HD OUT
-pin 9), each with a 1 k pull-up to 5 V (schematic, traced 2026-09-27).
+positions of the same jumper. Pin 11 (net DINST), MTRON pin 10 and HD OUT
+pin 9 each have a 1 k pull-up to 5 V (schematic, traced 2026-09-27). Signal
+names: pin 9 is HD OUT in the TEAC spec and MEDIA ("media sense") in generic
+26-pin tables; pin 11 is NC in the TEAC spec and /REDWC ("density select",
+a host output) in generic tables. The DINST ("disk installed") net name is the
+schematic's; no drive spec found supports it.
 
 ## Memory budget - the central constraint
 - 32 KB SRAM total. A full 1.44 MB floppy image does **not** fit in RAM.

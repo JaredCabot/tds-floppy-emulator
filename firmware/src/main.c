@@ -46,6 +46,7 @@ volatile uint32_t dbg_reset_cause;         /* CRM ctrlsts at boot: bit 29 = watc
 volatile uint32_t dbg_fw_build;            /* build ID: CRC-32 of this firmware image, the "crc" */
                                            /* make prints and UPDATE.UPD carries (docs/06) */
 volatile uint32_t dbg_fault;               /* buffer_fault(): the flash has failed (docs/10) */
+volatile uint32_t dbg_xfer_ms;             /* the last transfer's duration (tools/button.ps1) */
 extern uint32_t _sidata, _sdata, _edata;   /* linker: the image ends after .data's load image */
 volatile uint32_t dbg_flash_addr, dbg_flash_req;
 volatile int32_t  dbg_flash_len;
@@ -74,7 +75,9 @@ static uint32_t s_fault_next;              /* next toggle of the flash-fault bli
 static xfer_result_t run(xfer_result_t (*op)(void))
 {
   led_activity(true);                      /* flashes red while copying */
+  uint32_t t0 = flpy_dbg_ms;
   xfer_result_t r = op();
+  dbg_xfer_ms = flpy_dbg_ms - t0;
   led_activity(false);
   dbg_xfer_result = r;
   dbg_xfer_count++;
@@ -82,7 +85,7 @@ static xfer_result_t run(xfer_result_t (*op)(void))
    * (reformat as FAT32 / exFAT); 6 quick blinks: any other error */
   /* ... and one long (1 s) blink: cancelled by its own button (docs/11) */
   s_blink_ms = (r == XFER_BAD_FORMAT) ? 400u : (r == XFER_CANCELLED) ? 1000u : 80u;
-  s_blinks = (r == XFER_OK) ? 0 : (r == XFER_NOTHING) ? 4 : (r == XFER_BAD_FORMAT) ? 6
+  s_blinks = (r == XFER_OK || r == XFER_STATUS) ? 0 : (r == XFER_NOTHING) ? 4 : (r == XFER_BAD_FORMAT) ? 6
            : (r == XFER_CANCELLED) ? 2 : 12;
   s_blink_new = true;
   return r;
@@ -199,8 +202,8 @@ int main(void)
     if(unlocked && dbg_button == 3) b = BUTTON_UPDATE;
     dbg_button = 0;
     if(!flash_ok) b = 0;                                 /* nothing to transfer to or from */
-    if(b == BUTTON_RIGHT) run(xfer_in);
-    else if(b == BUTTON_LEFT) run(xfer_out);
+    if(b == BUTTON_RIGHT) xfer_note("DATA IN", run(xfer_in));
+    else if(b == BUTTON_LEFT) xfer_note("DATA OUT", run(xfer_out));
     else if(b == BUTTON_UPDATE && run(xfer_update) == XFER_OK)
     {
       led_red_off();

@@ -1,5 +1,5 @@
 /**
- * board.c - Phase 1a board bring-up: LED, debug UART, delay.
+ * board.c - board support: LED, delays, buttons, watchdog.
  *
  * Pins per docs/02-pinmap.csv. Keep this the ONLY place that knows physical
  * pin assignments (SOLID: board is the hardware-abstraction seam; the rest of
@@ -7,7 +7,6 @@
  */
 #include "board.h"
 #include "buttons.h"
-#include <stdio.h>
 
 /* ---- cycle-counter delay (DWT), exact at any core clock ---- */
 static uint32_t cycles_per_ms;
@@ -79,49 +78,10 @@ void board_tick_1ms(void)
   if(s_act && ++s_act_ms >= LED_ACTIVITY_PERIOD_MS / 2u) { s_act_ms = 0; led_red_toggle(); }
 }
 
-/* ---- debug UART (USART1 TX = PA9), 115200 8N1 ---- */
-static void dbg_uart_init(void)
-{
-  gpio_init_type gi;
-  crm_periph_clock_enable(DBG_USART_GPIO_CLK, TRUE);
-  crm_periph_clock_enable(DBG_USART_CRM_CLK, TRUE);
-
-  gpio_default_para_init(&gi);
-  gi.gpio_pins = DBG_USART_TX_PIN;      /* PA9, USART1 default mapping */
-  gi.gpio_mode = GPIO_MODE_MUX;
-  gi.gpio_out_type = GPIO_OUTPUT_PUSH_PULL;
-  gi.gpio_pull = GPIO_PULL_NONE;
-  gi.gpio_drive_strength = GPIO_DRIVE_STRENGTH_MODERATE;
-  gpio_init(DBG_USART_GPIO, &gi);
-
-  usart_init(DBG_USART, DBG_USART_BAUD, USART_DATA_8BITS, USART_STOP_1_BIT);
-  usart_transmitter_enable(DBG_USART, TRUE);
-  usart_enable(DBG_USART, TRUE);
-}
-
-void dbg_putc(char c)
-{
-  while(usart_flag_get(DBG_USART, USART_TDBE_FLAG) == RESET) { }
-  usart_data_transmit(DBG_USART, (uint16_t)c);
-  while(usart_flag_get(DBG_USART, USART_TDC_FLAG) == RESET) { }
-}
-
-void dbg_puts(const char *s) { while(*s) dbg_putc(*s++); }
-
-/* retarget printf() to the debug UART (newlib syscall) */
-int _write(int fd, char *ptr, int len);   /* newlib stdout hook (unused since printf was dropped) */
-int _write(int fd, char *ptr, int len)
-{
-  (void)fd;
-  for(int i = 0; i < len; i++) dbg_putc(ptr[i]);
-  return len;
-}
-
 void board_init(void)
 {
   delay_init();
   led_init();
-  dbg_uart_init();
 }
 
 uint16_t buttons_raw(void)
@@ -134,8 +94,8 @@ void watchdog_start(void)
 {
   *(volatile uint32_t *)0xE0042004u |= 0x100u;   /* DEBUG ctrl wdt_pause: stop while halted by SWD */
   wdt_register_write_enable(TRUE);
-  wdt_divider_set(WDT_CLK_DIV_256);              /* LICK ~40 kHz / 256 = ~156 Hz */
-  wdt_reload_value_set(2500u - 1u);              /* ~16 s */
+  wdt_divider_set(WDT_CLK_DIV_256);              /* LICK 30-60 kHz (typ 40; DS Table 29) / 256 */
+  wdt_reload_value_set(2500u - 1u);              /* 16 s typ, 10.7-21 s over the LICK tolerance */
   wdt_counter_reload();
   wdt_enable();
 }

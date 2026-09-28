@@ -39,10 +39,27 @@
 #define SR_BUSY         0x01u   /* status register bit 0 */
 
 /* ---- low-level CS + byte transfer ---- */
-static inline void ce_low(void)  { gpio_bits_reset(FLASH_GPIO, FLASH_CE_PIN); }
-static inline void ce_high(void) { gpio_bits_set(FLASH_GPIO, FLASH_CE_PIN); }
+/* Register-level access (1.2.0): these run for every byte of every track load,
+ * write-back and transfer, and the library calls they replace (gpio_bits_*,
+ * spi_i2s_*: one register access each, but in another file, so never inlined)
+ * cost more than the byte itself takes on the wire. Same behaviour. */
+static inline void ce_low(void)  { FLASH_GPIO->clr = FLASH_CE_PIN; }
 
-static uint8_t xfer(uint8_t b)
+/* CE# must stay high at least TCPH = 100 ns between commands (datasheet,
+ * AC characteristics), e.g. between AAI words and the busy polls around them.
+ * With register access that can otherwise be a few cycles (review 2026-09-28):
+ * make sure the write has reached the port, then wait 16 CPU cycles on the
+ * cycle counter (111 ns at 144 MHz; longer at any slower clock). */
+#define TCPH_CYCLES 16u
+static inline void ce_high(void)
+{
+  FLASH_GPIO->scr = FLASH_CE_PIN;
+  (void)FLASH_GPIO->odt;                             /* the write has completed */
+  uint32_t t0 = DWT->CYCCNT;
+  while(DWT->CYCCNT - t0 < TCPH_CYCLES) { }
+}
+
+static inline uint8_t xfer_i(uint8_t b)
 {
   /* Bounded spins: if SPI2 never clocks (miswire / dead flash), don't hang the
    * whole boot - time out so the self-test reports failure (5 Hz LED) instead.
@@ -50,12 +67,15 @@ static uint8_t xfer(uint8_t b)
    * 18 MHz (~0.5 us). (A missing flash chip does not trigger it: SPI still
    * clocks and reads 0xFF, which the JEDEC-ID check catches.) */
   uint32_t t = 1000000u;
-  while(spi_i2s_flag_get(FLASH_SPI, SPI_I2S_TDBE_FLAG) == RESET) { if(--t == 0) return 0xFF; }
-  spi_i2s_data_transmit(FLASH_SPI, b);
+  while(!(FLASH_SPI->sts & SPI_I2S_TDBE_FLAG)) { if(--t == 0) return 0xFF; }
+  FLASH_SPI->dt = b;
   t = 1000000u;
-  while(spi_i2s_flag_get(FLASH_SPI, SPI_I2S_RDBF_FLAG) == RESET) { if(--t == 0) return 0xFF; }
-  return (uint8_t)spi_i2s_data_receive(FLASH_SPI);
+  while(!(FLASH_SPI->sts & SPI_I2S_RDBF_FLAG)) { if(--t == 0) return 0xFF; }
+  return (uint8_t)FLASH_SPI->dt;
 }
+/* xfer_i is inlined only in the hot loops (bulk read, AAI programming, the
+ * busy poll); everything else calls this one copy, to keep the image small. */
+__attribute__((noinline)) static uint8_t xfer(uint8_t b) { return xfer_i(b); }
 
 /* single-byte command with CS framing */
 static void cmd(uint8_t op)
@@ -75,8 +95,8 @@ static void send_addr(uint32_t addr)
 static uint8_t read_status(void)
 {
   ce_low();
-  xfer(CMD_RDSR);
-  uint8_t sr = xfer(0x00);
+  xfer_i(CMD_RDSR);
+  uint8_t sr = xfer_i(0x00);
   ce_high();
   return sr;
 }
@@ -158,6 +178,9 @@ static void unprotect(void)
 
 bool spiflash_init(void)
 {
+  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;    /* the cycle counter, for TCPH */
+  DWT->CYCCNT = 0;
+  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
   spi_pins_init();
   spi_periph_init();
   unprotect();
@@ -183,7 +206,7 @@ void spiflash_read(uint32_t addr, void *buf, uint32_t len)
   ce_low();
   xfer(CMD_READ);
   send_addr(addr);
-  while(len--) *p++ = xfer(0x00);
+  while(len--) *p++ = xfer_i(0x00);
   ce_high();
 }
 
@@ -248,8 +271,8 @@ static void prog_aai(uint32_t addr, const uint8_t *p, uint32_t words)
   for(uint32_t i = 1; i < words; i++)
   {
     ce_low();
-    xfer(CMD_AAI_WORD);
-    xfer(p[2 * i]); xfer(p[2 * i + 1]);
+    xfer_i(CMD_AAI_WORD);
+    xfer_i(p[2 * i]); xfer_i(p[2 * i + 1]);
     ce_high();
     wait_busy();
   }

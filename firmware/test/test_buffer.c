@@ -252,6 +252,26 @@ static void test_density(void)
   CHECK(!buffer_is_dd() && memcmp(&g_flash[BUF_META_ADDR], "TDSFBUF2", 8) == 0,
         "switching back to HD rewrites the meta sector: HD, marker intact");
   CHECK(buffer_fault(), "... and keeps the recorded fault");
+
+  /* never past the disk: a BPB claiming more sectors than the disk has */
+  static uint8_t z[512];
+  memset(g_flash, 0xFF, sizeof g_flash);
+  reboot();
+  buffer_set_density(true);
+  memset(z, 0x55, sizeof z);
+  buffer_read_lba(1440, z);
+  int zeros = 1; for(unsigned i = 0; i < 512; i++) zeros &= z[i] == 0;
+  CHECK(zeros, "DD: a read beyond sector 1439 returns zeros");
+  static uint8_t snap[sizeof g_flash];
+  memcpy(snap, g_flash, sizeof g_flash);
+  memset(z, 0x00, sizeof z);
+  buffer_program(2000, 0, z, sizeof z);
+  CHECK(memcmp(snap, g_flash, sizeof g_flash) == 0, "DD: a write beyond the disk changes nothing");
+  buffer_set_density(false);
+  memset(z, 0x55, sizeof z);
+  buffer_read_lba(2880, z);
+  zeros = 1; for(unsigned i = 0; i < 512; i++) zeros &= z[i] == 0;
+  CHECK(zeros, "HD: a read beyond sector 2879 returns zeros");
 }
 
 int main(void)

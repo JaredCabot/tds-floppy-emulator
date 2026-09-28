@@ -6,6 +6,57 @@ gets a new version (docs/06). The build ID of each release is in
 [release/README.md](release/README.md); downloads are on the
 [Releases page](https://github.com/JaredCabot/tds-floppy-emulator/releases).
 
+## [1.2.0] - 2026-09-29
+
+### Added
+- **Status report.** Holding both buttons with no `UPDATE.UPD` on the flash
+  drive writes `EMUSTAT.TXT` instead: firmware version and build ID, the
+  unit's unique serial number and clock source, the internal disk's density
+  and contents, health counters, the flash drive's file system, and the last
+  transfer.
+
+### Changed
+- **Faster transfers.** A full 1.44 MB DATA IN takes about 15 s instead of
+  19 s; DATA OUT about a third less time (1 MB written and read back in
+  6.2-6.9 s instead of 10.6 s). The internal flash driver was the bottleneck
+  and is now much leaner; USB data also moves in chunks of up to 8 KB. All
+  verification and cancelling work as before.
+- **Faster track loads:** the host waits 11 ms for a new track instead of
+  27 ms.
+- **Smaller firmware:** built with link-time optimisation, 44 KB instead of
+  49 KB, leaving room for future features. It also makes transfers a little
+  faster: a full 1.44 MB DATA IN in about 15 s.
+- With no `UPDATE.UPD`, both buttons no longer give 2 quick blinks: they write
+  the status report.
+- **Interface inputs no longer use the MCU's internal pull-ups.** The board
+  already has pull-up resistors to 5 V on every host line, and the datasheet
+  requires internal pull-ups off on inputs driven above 3.6 V.
+- **Crystal fallback:** if the 8 MHz crystal fails to start, the emulator now
+  runs from the internal oscillator instead of stopping, and the status report
+  says so.
+
+### Fixed
+- Reads and writes beyond the end of the disk (sector 1440 on a 720 KB disk,
+  2880 on a 1.44 MB disk) are now ignored instead of reaching other parts of
+  the internal flash.
+
+### Removed
+- The unused debug serial output.
+
+### Documentation
+- **New general user manual, TFE-0002-00**, for any equipment with a 26-pin
+  slim floppy drive, with a technical reference (interface, timing, disk and
+  update file formats).
+- **TDS manual revised to TFE-0001-01:** 720 KB disks and jumper JE, the
+  status report, 1.2.0 transfer rates, the TDS 784D as a verified
+  instrument, a new Figure 2-1 showing all jumpers, headers and controls, and
+  Figure 2-2 showing the S1 jumper fitted. Jumper JD is now described
+  correctly: it holds interface pin 11 (density select) low and is not used.
+- **Hardware notes** (docs/01): measured on a TDS 794D, the host drives SEL,
+  STEP and DIR high enough to lift the board's 3.3 V rail to 3.8 V through
+  the MCU's protection diodes; the fix is a series resistor on each line.
+  Any firmware is affected, including the original.
+
 ## [1.1.0] - 2026-09-27
 
 ### Added
@@ -55,5 +106,6 @@ First release.
 - Watchdog, persistent flash-fault indication, build ID; the user manual
   TFE-0001-00 in the Tektronix house style.
 
+[1.2.0]: https://github.com/JaredCabot/tds-floppy-emulator/releases/tag/v1.2.0
 [1.1.0]: https://github.com/JaredCabot/tds-floppy-emulator/releases/tag/v1.1.0
 [1.0.0]: https://github.com/JaredCabot/tds-floppy-emulator/releases/tag/v1.0.0

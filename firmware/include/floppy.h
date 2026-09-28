@@ -56,6 +56,9 @@ bool flpy_idle(void);
  * disk is ejected, or before flpy_init(); NULL otherwise. */
 #define FLPY_SCRATCH_SIZE 9216u
 void *flpy_scratch(void);
+/* The other track buffer (FLPY_SCRATCH_SIZE bytes), also idle while the disk
+ * is ejected: flpy_insert() reloads the track. NULL while in use. */
+void *flpy_scratch2(void);
 
 uint8_t flpy_current_cyl(void);
 uint8_t flpy_current_head(void);

@@ -1,6 +1,6 @@
 /* usb_conf.h - Artery USB library configuration for the emulator (host mode only).
  * Adapted from the AT32F415 usb_host/msc_only_fat32 example. Pin conflicts on
- * this board decide the options: PA9 is the debug UART (so no VBUS sensing),
+ * this board decide the options: PA9 is on header J3 (so no VBUS sensing),
  * PB3 is the floppy READY output (so no VBUS power-switch pin; the USB-A port's
  * 5 V is always on), PA8 is WDATA (so no SOF output). */
 #ifndef __USB_CONF_H
@@ -30,7 +30,7 @@ extern "C" {
 #define USBH_NP_TX_FIFO_SIZE             96
 #define USBH_P_TX_FIFO_SIZE              96
 
-#define USB_VBUS_IGNORE                  /* PA9 is USART1 TX */
+#define USB_VBUS_IGNORE                  /* PA9 is not the VBUS sense input here */
 
 #define USBH_DEBUG(...)
 

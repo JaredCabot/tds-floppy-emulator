@@ -61,13 +61,13 @@ exact firmware image (docs/06): it is what a running unit reports over SWD
 **`tdsfloppy_install.hex`** is the first-installation image: the bootloader and
 the firmware in one Intel HEX file, programmed once through the emulator's
 USB-DFU bootloader with the Artery ISP Programmer. Follow *Load the Firmware*
-in the [manual](../docs/manual/TFE-0001-00_TDS_Floppy_Emulator_Instructions.pdf)
+in the [manual](../docs/manual/TFE-0001-01_TDS_Floppy_Emulator_Instructions.pdf)
 (page 2-1), or [docs/08](../docs/08-unlock-and-flash-via-isp.md). The tool is
 archived in [third-party/](../third-party/).
 
 **`UPDATE.UPD`** updates an emulator that already runs this firmware (any
 earlier version): copy it to the root of a USB flash drive, insert it, hold
-both buttons for 3 seconds and release (manual page 3-3). The internal disk
+both buttons for 3 seconds and release (manual page 3-4). The internal disk
 and its files are kept.
 
 **Use these files, from this folder or the Releases page.** The files a build

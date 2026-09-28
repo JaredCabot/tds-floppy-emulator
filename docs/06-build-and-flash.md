@@ -156,3 +156,23 @@ flash-fault flag. `release/README.md` lists the build ID of each release;
    release/UPDATE.UPD docs/manual/... --notes-file ...`.
 4. Download the attached files anonymously and compare their SHA-256 with
    `release/README.md`.
+
+## Link-time optimisation (default from 1.2.0)
+`make` builds the firmware (not the bootloader, which is never updated
+in the field) with link-time optimisation; each file keeps its own optimisation
+level (`SPEED_SRC` at -O2, the rest -Os). Measured on the TDS 794D, firmware
+1.2.0:
+
+| | Without LTO | With LTO |
+|---|---|---|
+| Image | 49,004 bytes (92% of the update limit) | 44,476 bytes (83%) |
+| DATA IN, 1.44 MB | 16.2 s | 14.9 s |
+| DATA OUT, compare only | 4.3 s | 3.9 s |
+| Track load | 12.2 ms | 11.4 ms |
+| Stack free, same workload | 3,288 bytes | 3,320 bytes |
+
+Checked with LTO: all 57 interrupt handlers kept and the vector table pointing
+into the image; every symbol the SWD tools use present (LTO renames static
+variables `name.lto_priv.N`; `tools/fdstat.ps1` accepts that); benchmark files
+byte-identical; a full scope format and ten 50,000-point saves (5,296 sectors,
+0 bad CRC, 0 lost); DATA OUT writing and verifying 1 MB. Made the default\n(`LTO ?= -flto`); `make LTO=` builds without it.

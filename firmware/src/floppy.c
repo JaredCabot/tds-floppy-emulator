@@ -495,9 +495,14 @@ static void gpio_conf(void)
   crm_periph_clock_enable(CRM_IOMUX_PERIPH_CLOCK, TRUE);
   gpio_pin_remap_config(SWJTAG_GMUX_010, TRUE);
 
-  gpio_default_para_init(&gi);                     /* inputs idle high */
+  /* Inputs from the host, pulled up to 5 V by the board's own 1 k resistors
+   * (PU1-PU14, also SEL without a jumper). No internal pull-ups: they would
+   * add nothing and feed current from the 5 V lines back into the 3.3 V rail;
+   * the datasheet requires them off above VDD + 0.3 V (DS_AT32F415 5.3,
+   * I/O static characteristics, note 3; review 2026-09-28). */
+  gpio_default_para_init(&gi);
   gi.gpio_mode = GPIO_MODE_INPUT;
-  gi.gpio_pull = GPIO_PULL_UP;
+  gi.gpio_pull = GPIO_PULL_NONE;
   gi.gpio_pins = PIN_SEL | PIN_STEP | PIN_WDATA;
   gpio_init(GPIOA, &gi);
   gi.gpio_pins = PIN_DIR | PIN_SIDE1 | PIN_WGATE;
@@ -709,6 +714,12 @@ void *flpy_scratch(void)
 {
   if(s_started && (s_media || s_pend_busy)) return NULL;   /* in use by the floppy */
   return s_trkbuf[s_live ^ 1];
+}
+
+void *flpy_scratch2(void)
+{
+  if(s_started && (s_media || s_pend_busy)) return NULL;
+  return s_trkbuf[s_live];                         /* the live track: flpy_insert() reloads it */
 }
 
 uint8_t flpy_current_cyl(void)  { return s_cyl; }

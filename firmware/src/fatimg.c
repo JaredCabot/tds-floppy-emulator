@@ -170,14 +170,20 @@ bool fatimg_next_file(fatimg_read_t *r, fatimg_file_t *f)
   return false;
 }
 
-uint16_t fatimg_next_cluster(fatimg_read_t *r, uint16_t cl)
+uint16_t fatimg_fat_entry(fatimg_read_t *r, uint16_t cl)
 {
-  if(cl < 2 || cl > r->max_cl) return 0;
+  if(cl < 2 || cl > r->max_cl) return 0xFF7;       /* outside the volume */
   uint32_t k = cl + cl / 2u;                        /* byte offset of the entry */
   uint8_t lo = cached(r, r->fat_lba + k / FATIMG_SECTOR)[k % FATIMG_SECTOR];
   uint8_t hi = cached(r, r->fat_lba + (k + 1) / FATIMG_SECTOR)[(k + 1) % FATIMG_SECTOR];
   uint16_t v = (uint16_t)(lo | hi << 8);
-  v = (cl & 1) ? (uint16_t)(v >> 4) : (uint16_t)(v & 0xFFF);
+  return (cl & 1) ? (uint16_t)(v >> 4) : (uint16_t)(v & 0xFFF);
+}
+
+uint16_t fatimg_next_cluster(fatimg_read_t *r, uint16_t cl)
+{
+  if(cl < 2 || cl > r->max_cl) return 0;
+  uint16_t v = fatimg_fat_entry(r, cl);
   return (v >= 2 && v <= r->max_cl) ? v : 0;        /* EOC, free, bad or corrupt -> end */
 }
 

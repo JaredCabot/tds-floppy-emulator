@@ -6,28 +6,20 @@
 
 /*
  * Board support for the SFR1M44-DU26 floppy emulator (PCB SFRC2D.B): LED,
- * timing, debug UART, watchdog. Authoritative pin map: docs/02-pinmap.csv; the
+ * timing, buttons, watchdog. Authoritative pin map: docs/02-pinmap.csv; the
  * floppy, SPI-flash and USB pins live in their own modules.
  *
  * LED: bi-colour. Red = PB10 (ACTIVE-LOW: common anode). Green is not driven
  *      by the MCU: its cathode is the drive-select line (PA0, a host input),
  *      so it lights whenever the scope selects the drive (not fitted on some
  *      units).
- * Debug UART: USART1_TX = PA9 (header J3.3), 115200 8N1, transmit only.
  */
 
 #define LED_RED_GPIO        GPIOB
 #define LED_RED_PIN         GPIO_PINS_10
 #define LED_RED_CRM_CLK     CRM_GPIOB_PERIPH_CLOCK
 
-#define DBG_USART           USART1
-#define DBG_USART_CRM_CLK   CRM_USART1_PERIPH_CLOCK
-#define DBG_USART_GPIO      GPIOA
-#define DBG_USART_GPIO_CLK  CRM_GPIOA_PERIPH_CLOCK
-#define DBG_USART_TX_PIN    GPIO_PINS_9
-#define DBG_USART_BAUD      115200
-
-/* Bring up clocks, LED and debug UART. Call once after system_clock_config(). */
+/* Bring up the delay timer and the LED. Call once after system_clock_config(). */
 void board_init(void);
 
 /* LED control (red side). */
@@ -57,9 +49,5 @@ uint16_t buttons_raw(void);
 void delay_ms(uint32_t ms);
 void delay_us(uint32_t us);
 
-/* Byte/string output on the debug UART (blocking). printf() also works and is
- * retargeted to this UART. */
-void dbg_putc(char c);
-void dbg_puts(const char *s);
 
 #endif /* BOARD_H */

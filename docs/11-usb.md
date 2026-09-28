@@ -13,6 +13,7 @@ byte-identical to the scope's own CF-card copies (tools/verify_disk.py).
 | **Stick inserted** | **Nothing happens** until a button is pressed (Jared's requirement, 2026-09-24; the stock unit auto-loaded on insertion, and an earlier version here auto-loaded onto an empty disk). Removing the stick resets DATA IN paging to the first page. |
 | **Red LED (PB10)** | Flashes once every 0.25 s while copying (SysTick-driven, `LED_ACTIVITY_PERIOD_MS` in board.h; measured 125 ms on / 125 ms off); 12 fast toggles = error; 4 = nothing to load; 6 slow toggles = stick format not supported; 2 long (1 s) toggles = cancelled; off when idle; continuous 5 Hz = the internal SPI flash failed (self-test at boot: the unit then presents no disk and refuses transfers; or a track that could not be stored after 3 tries, docs/10). |
 | **720 KB disks** (1.1.0) | DATA IN and DATA OUT work the same on a 720 KB DD disk (docs/10): DATA IN builds a 720 KB volume (1 KB clusters, 112 root entries) and loads as many files as fit in 730,112 bytes, skipping larger ones; DATA OUT reads the volume the host formatted; the blank disk after DATA OUT stays 720 KB. |
+| **Transfer size** (1.2.0) | USB data moves in chunks of up to 8 KB (16 sectors in one mass-storage command, instead of one command per sector), held in the floppy's second track buffer, which is idle while the disk is ejected (`flpy_scratch2`). Every sector written to the internal disk is still read back and compared, every copy on the stick is still read back and compared, and cancel is checked at least once per chunk. |
 | **Cancel** | Pressing the button that started a transfer again (held 50 ms) while the red LED flashes stops it at the next safe point: between sectors, or while waiting for the scope. DATA OUT: a partial or unverified copy is deleted, files already copied stay on the stick, the internal disk is **not** erased, and a later DATA OUT recognises what is already there. DATA IN: the disk keeps the files loaded so far and the next press loads that page again (the disk's previous contents are gone: DATA IN erases it first). The firmware update is not cancellable. The LED gives one long (1 s) blink. The other button is ignored during a transfer. `tools/button.ps1 -CancelAt N` cancels after N bytes (SWD hook `xfer_dbg_cancel_at`). |
 | **Green LED (if fitted)** | Hard-wired to the scope's drive-select line. |
 
@@ -108,3 +109,28 @@ the `._*` files macOS writes). DATA OUT writes long names on any format.
 - If the SPI flash itself failed permanently, the background write-back would
   retry indefinitely and a button press would wait for it. The boot self-test
   (fast LED blink) catches a dead chip.
+
+## Transfer speed (1.2.0)
+Measured on the TDS 794D with a FAT32 (Transcend, GPT) and an exFAT (SanDisk,
+MBR) stick; times from the firmware's own counters (`dbg_xfer_ms`, split into
+`xfer_dbg_ms_wait/_usb/_flash`, printed by `tools/button.ps1`):
+
+| Operation | 1.1.0 | 1.2.0 |
+|---|---|---|
+| DATA IN, 1,433,600 bytes | 19.1 s | 15.0 s (USB 2.0 s, internal flash 12.7 s), both sticks |
+| DATA OUT writing 1,002,120 bytes, with read-back | 10.6 s | 6.9 s FAT32, 6.2 s exFAT |
+| DATA OUT, files already on the stick (compare only) | 6.4 s | 4.1-4.3 s |
+| Floppy track load (9 KB, what the host waits for) | 27.5 ms | 12.2 ms |
+
+(1.1.0 times are end-to-end from the tool, +-2 s.) The USB side was never the
+bottleneck: the stick reads at about 700 KB/s. The time was in the SPI flash
+driver, whose every byte went through two library calls in another file
+(`gpio_bits_*`, `spi_i2s_*`, never inlined). 1.2.0 does the chip select and
+byte transfer at register level, inlined only in the hot loops (bulk read,
+AAI programming, the busy poll) to keep the image small. DATA IN is now
+bound by the flash chip's own word-program time (about 12 us per 2 bytes,
+near its specified maximum). USB data also moves in chunks of up to 8 KB
+(below); on these sticks that alone changed little, but it costs nothing.
+Verified after the change: benchmark files byte-identical from the flash, a
+full scope format (3,026 sectors, 0 bad CRC, 0 lost), cancel mid-chunk, and
+an update installed by 1.2.0's own staging.

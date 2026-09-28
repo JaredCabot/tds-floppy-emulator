@@ -127,6 +127,10 @@ uint32_t fatimg_pos_next(fatimg_read_t *r, fatimg_pos_t *p, uint32_t *lba);
 /* Clusters a file of size bytes needs on this volume. */
 uint32_t fatimg_clusters_for(const fatimg_read_t *r, uint32_t size);
 
+/* The raw FAT entry of cluster cl (0 = free); 0xFF7 (bad) for a cluster
+ * outside 2..max_cl, so no caller can mistake it for a free one. */
+uint16_t fatimg_fat_entry(fatimg_read_t *r, uint16_t cl);
+
 /* Next cluster in the chain, or 0 at end / on a corrupt entry. */
 uint16_t fatimg_next_cluster(fatimg_read_t *r, uint16_t cl);
 /* LBA of a data cluster (1 sector per cluster on 1.44 MB; spc handled). */

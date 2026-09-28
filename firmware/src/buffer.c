@@ -71,9 +71,21 @@ static uint32_t lba_addr(uint32_t lba)
 
 bool buffer_is_dd(void) { return s_dd; }
 
-void buffer_read_lba(uint32_t lba, uint8_t dst[512])  { spiflash_read(lba_addr(lba), dst, 512); }
+/* Sectors on the disk. A volume whose boot sector claims more (a damaged disk,
+ * or an odd host) must not reach past it: on a DD disk sector 2879 would map to
+ * slot 319 of 162, beyond the chip, and wrap round into other tracks (review
+ * 2026-09-28). Beyond the disk reads as zeros (an empty FAT, end of directory)
+ * and writes go nowhere. */
+static uint32_t disk_sectors(void) { return s_dd ? 1440u : 2880u; }
+
+void buffer_read_lba(uint32_t lba, uint8_t dst[512])
+{
+  if(lba >= disk_sectors()) { memset(dst, 0, 512); return; }
+  spiflash_read(lba_addr(lba), dst, 512);
+}
 void buffer_program(uint32_t lba, unsigned off, const void *src, unsigned len)
 {
+  if(lba >= disk_sectors()) return;
   spiflash_program(lba_addr(lba) + off, src, len);
 }
 void buffer_load_track(unsigned t, uint8_t dst[BUF_TRACK_SIZE]) { spiflash_read(slot_addr(t), dst, BUF_TRACK_SIZE); }

@@ -27,18 +27,23 @@ both ways by the jumper and the scope's format.
   [**Releases page**](https://github.com/JaredCabot/tds-floppy-emulator/releases)
   (install image and update file, with checksums); what changed in each
   version is in [CHANGELOG.md](CHANGELOG.md).
-- **Manual:** [TFE-0001-00 Floppy Disk Drive Emulator Instructions](docs/manual/TFE-0001-00_TDS_Floppy_Emulator_Instructions.pdf)
-  (PDF), in the style of the Tektronix TDS manuals. Covers loading the
-  firmware, fitting the emulator in the instrument, the buttons and
-  indicators, USB flash drives, firmware updates, troubleshooting and
-  specifications.
+- **Manuals** (PDF, in the style of the Tektronix TDS manuals):
+  - [TFE-0001-01 Floppy Disk Drive Emulator Instructions](docs/manual/TFE-0001-01_TDS_Floppy_Emulator_Instructions.pdf)
+    for the TDS 500, 600 and 700 series and the TLS 216. Covers loading the
+    firmware, fitting the emulator in the instrument, the jumpers and disk
+    density, the buttons and indicators, USB flash drives, firmware updates,
+    the status report, troubleshooting and specifications.
+  - [TFE-0002-00 Floppy Disk Drive Emulator User Manual](docs/manual/TFE-0002-00_Floppy_Disk_Drive_Emulator_User_Manual.pdf)
+    for any equipment with a 26-pin slim floppy drive: installation,
+    operation, specifications, and a technical reference (interface signals
+    and timing, disk formats, update file format).
 - **Firmware, first installation:** [release/tdsfloppy_install.hex](release/tdsfloppy_install.hex)
-  (version 1.1.0, bootloader and firmware in one file; checksum in
+  (version 1.2.0, bootloader and firmware in one file; checksum in
   [release/README.md](release/README.md)). Program it once over USB with the
   Artery ISP Programmer, archived in [third-party/](third-party/), as
   described in the manual (*Load the Firmware*, page 2-1).
 - **Firmware, update:** [release/UPDATE.UPD](release/UPDATE.UPD): copy it to a
-  USB flash drive and hold both buttons for 3 seconds (manual page 3-3); the
+  USB flash drive and hold both buttons for 3 seconds (manual page 3-4); the
   internal disk is kept.
 
 ## Using it
@@ -51,7 +56,7 @@ format.
 | **Left (upper as installed) button** - DATA OUT, *take the disk out* | Copies every file on the internal disk to the stick, keeping the original dates and any folders the scope made. Never overwrites: a clash is saved as `NAME_1.EXT`, `NAME_2.EXT`, ...; a file already there and identical is not copied twice. Each file is read back and compared; only if all are safely on the stick is the internal disk erased, blank for new data. Any failure leaves it untouched. |
 | **The same button again, while the LED flashes** - *cancel* | Stops the transfer at the next safe point; the LED gives one long blink. DATA OUT: any partly copied file is deleted, files already copied stay on the stick, the internal disk is not erased. DATA IN: the disk keeps the files loaded so far and the next press loads the same batch again (the disk's previous contents are gone: DATA IN erases it first). A firmware update cannot be cancelled. |
 | Inserting a stick | Does nothing until a button is pressed. Sticks may be FAT12/16/32 or exFAT, MBR or GPT partitioned; on exFAT, long names get Windows-style 8.3 names (`SCOPEC~1.BMP`). |
-| **Both buttons held 3 s** - *firmware update* | Red LED goes solid; release to install `UPDATE.UPD` from the stick (~5 s, safe against power loss). See [docs/13](docs/13-firmware-update.md). |
+| **Both buttons held 3 s** - *firmware update* | Red LED goes solid; release to install `UPDATE.UPD` from the stick (~5 s, safe against power loss). See [docs/13](docs/13-firmware-update.md). From 1.2.0, with no `UPDATE.UPD` on the stick, it writes a **status report** instead, `EMUSTAT.TXT`: firmware version and build ID, the unit's serial number, the internal disk's density and contents, health counters and the last transfer. |
 | **Jumper JE, then format in the scope** - *720 KB disk* | Fitted: the scope formats the disk at 720 KB and the emulator follows, like a DD disk in a real drive; removed and formatted again: 1.44 MB. The disk keeps its density through power-off, updates, DATA IN and DATA OUT. With JE and the disk disagreeing, the scope reads the disk as unformatted until it formats it. See [docs/10](docs/10-read-write-path.md). |
 | Pressing a button while the scope is saving | Waits (LED flashing) until the scope has finished with the drive, then copies. Refused with the error blink if it is still busy after 15 s. |
 
@@ -104,6 +109,8 @@ devices, working or not, are welcome as GitHub issues.
   head never waits for flash on a track change.
 - Every sector loaded from the stick is verified as it is written.
 - A transfer can be cancelled with its own button.
+- Faster transfers (1.2.0): a full 1.44 MB DATA IN in about 15 s, and
+  track loads for the host in 12 ms.
 - 720 KB disks (1.1.0), switched like a real disk: fit jumper JE and format in
   the scope. No settings file, no reboot.
 - A button press waits for the scope to finish with the drive instead of

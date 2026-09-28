@@ -1,11 +1,17 @@
 /**
- * clock.c - system clock: 144 MHz from the 8 MHz HEXT crystal via PLL.
+ * clock.c - system clock: 144 MHz from the 8 MHz HEXT crystal via PLL, as the
+ * Artery msc_only_fat32 example (a known-good 144 MHz / USB 48 MHz tree).
  *
- * Verbatim from the Artery msc_only_fat32 example (correct for this board's
- * 8 MHz crystal). Kept as-is so the USB host phase inherits a known-good
- * 144 MHz / USB-48 MHz clock tree. See reference/msc_only_fat32.
+ * If the crystal does not start, the PLL runs from the internal oscillator
+ * instead (RM_AT32F415 4.3.2: PLLRCS 0 = HICK / 12 = 4 MHz; x36 = the same
+ * 144 MHz), rather than waiting for ever with the LED dark (review
+ * 2026-09-28). HICK is factory-trimmed to +-1.5 % (DS Table 28): the floppy
+ * stays within the drive's +-1.5 % rotation tolerance, USB (+-0.25 %) may
+ * not work. clock_on_hick reports it (status report).
  */
 #include "clock.h"
+
+bool clock_on_hick;
 
 void system_clock_config(void)
 {
@@ -13,10 +19,17 @@ void system_clock_config(void)
   flash_psr_set(FLASH_WAIT_CYCLE_4);
 
   crm_clock_source_enable(CRM_CLOCK_SOURCE_HEXT, TRUE);
-  while(crm_hext_stable_wait() == ERROR) { }
+  bool hext = false;                               /* one library wait is a few ms: allow */
+  for(unsigned i = 0; i < 20 && !hext; i++)        /* a slow-starting crystal ~300 ms */
+    hext = crm_hext_stable_wait() == SUCCESS;
 
-  /* 8 MHz / 2 * 36 = 144 MHz */
-  crm_pll_config(CRM_PLL_SOURCE_HEXT_DIV, CRM_PLL_MULT_36);
+  if(hext) crm_pll_config(CRM_PLL_SOURCE_HEXT_DIV, CRM_PLL_MULT_36);   /* 8 MHz / 2 x 36 */
+  else
+  {
+    crm_clock_source_enable(CRM_CLOCK_SOURCE_HEXT, FALSE);
+    crm_pll_config(CRM_PLL_SOURCE_HICK, CRM_PLL_MULT_36);              /* 4 MHz x 36 */
+    clock_on_hick = true;
+  }
   crm_clock_source_enable(CRM_CLOCK_SOURCE_PLL, TRUE);
   while(crm_flag_get(CRM_PLL_STABLE_FLAG) != SET) { }
 

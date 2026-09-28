@@ -20,6 +20,7 @@ typedef enum {
   XFER_BUSY,          /* the scope kept using the drive; nothing was done (try again) */
   XFER_BAD_FORMAT,    /* stick not readable: NTFS, unformatted, or not 512-byte sectors */
   XFER_CANCELLED,     /* stopped by pressing the transfer's own button again (see xfer.c) */
+  XFER_STATUS,        /* update: no UPDATE.UPD, so the status report was written instead */
 } xfer_result_t;
 
 /* DATA IN (right button): replace the internal disk with the next "page" of
@@ -46,6 +47,9 @@ extern volatile uint32_t xfer_dbg_cancel_at;
  * the SPI flash for the bootloader. XFER_OK means staged: the caller restarts.
  * XFER_NOTHING: no such file. Anything else: nothing changed. docs/13. */
 xfer_result_t xfer_update(void);
+
+/* Record a DATA IN / DATA OUT and its result for the status report. */
+void xfer_note(const char *what, xfer_result_t r);
 
 /* Startup: once the firmware installed from a staged update is running, withdraw
  * its commit record (see xfer.c). */

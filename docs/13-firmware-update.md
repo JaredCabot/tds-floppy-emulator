@@ -14,7 +14,7 @@ the stick, 5 s each; bad files rejected; interrupted installs repaired).
 | Outcome | LED |
 |---|---|
 | Updated | Flashing, then the restart |
-| No `UPDATE.UPD` on the stick | 2 quick blinks, nothing changed |
+| No `UPDATE.UPD` on the stick | From 1.2.0: the status report `EMUSTAT.TXT` is written (below); nothing else changes. (1.1.0 and earlier: 2 quick blinks) |
 | Corrupt / truncated file, other hardware, or scope busy | 6 quick blinks, nothing changed |
 | Stick format not supported (e.g. NTFS) | 3 slow blinks, nothing changed |
 
@@ -99,3 +99,23 @@ programs bootloader + app. Bump `FW_VERSION` in `include/version.h` for each
 release; the running version is `dbg_fw_version` (SWD). Bench tools:
 `tools/stick.ps1 put|get` moves files to/from the stick in the emulator over SWD;
 `dbg_button = 3` triggers an update like the buttons.
+
+## Status report (1.2.0)
+Holding both buttons with **no `UPDATE.UPD`** on the stick writes a status
+report instead, `EMUSTAT.TXT` in the stick's root (an 8.3 name; DATA IN
+skips it, as it skips `UPDATE.UPD`; plain text, CRLF lines,
+replaced each time; `include/status.h`, formatted by the host-tested
+`src/status.c`). The disk is ejected while it is gathered (as for any
+transfer), then inserted again unchanged (so the host sees a disk change,
+although nothing changed); the LED flashes, then goes off
+(result `XFER_STATUS`, no blink; unlike an update, no restart). Contents:
+
+- firmware version, build ID, board; the MCU's 96-bit unique ID (0x1FFFF7E8)
+  and the SPI flash JEDEC ID, which tell units apart;
+- the internal disk: density, files and folders, bytes used and free;
+- health: flash fault, write-backs since power-on, journal recoveries and
+  marker repairs at the last boot, the last reset's cause (watchdog first),
+  uptime;
+- the flash drive's file system and capacity (not its free space: on FAT32
+  without valid FSInfo, counting it could take minutes);
+- the last DATA IN / DATA OUT since power-on and its result.
