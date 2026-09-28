@@ -1,0 +1,101 @@
+name: Bug report
+description: Something does not work as the manual describes
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The more of this you can fill in, the faster the problem can be found.
+
+        **Status report (firmware 1.2.0 and later):** remove `UPDATE.UPD` from the USB flash drive, insert it,
+        hold both buttons for 3 seconds and release. The emulator writes `EMUSTAT.TXT` to the flash drive.
+        Paste its contents below; it answers most of the questions here.
+  - type: textarea
+    id: status
+    attributes:
+      label: Status report (EMUSTAT.TXT)
+      description: Paste the whole file. With firmware older than 1.2.0, give the firmware version instead.
+      render: text
+    validations:
+      required: false
+  - type: input
+    id: firmware
+    attributes:
+      label: Emulator firmware version
+      description: From the status report or the release you installed, for example 1.2.0 (build 1c27c478).
+      placeholder: "1.2.0"
+    validations:
+      required: true
+  - type: input
+    id: host
+    attributes:
+      label: Host equipment and its firmware version
+      description: The instrument or computer the emulator is fitted in, and its firmware version if known.
+      placeholder: "TDS 784D, firmware v7.4e"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: What were you doing?
+      options:
+        - The host reading, saving or formatting the disk
+        - DATA IN (loading files from the flash drive)
+        - DATA OUT (saving files to the flash drive)
+        - Firmware update or status report
+        - Loading the firmware for the first time (Artery ISP Programmer)
+        - Power-on or installation
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Include any message the host showed.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The shortest sequence that shows the problem, and whether it happens every time.
+      placeholder: |
+        1. Format the disk from the host
+        2. Save a setup file
+        3. Press DATA OUT
+    validations:
+      required: false
+  - type: input
+    id: led
+    attributes:
+      label: Red indicator pattern
+      description: For example "6 quick blinks", "3 slow blinks", "fast blinking, continuous" (manual, Indicator Patterns).
+    validations:
+      required: false
+  - type: input
+    id: stick
+    attributes:
+      label: USB flash drive
+      description: Make, capacity and file system (FAT32, exFAT, ...).
+      placeholder: "SanDisk 32 GB, exFAT"
+    validations:
+      required: false
+  - type: dropdown
+    id: density
+    attributes:
+      label: Disk density (jumper JE)
+      options:
+        - 1.44 MB (JE not fitted)
+        - 720 KB (JE fitted)
+        - Not sure
+    validations:
+      required: false
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Photos of the jumpers, files that trigger the problem (attach them), other hardware details.
+    validations:
+      required: false

@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Manuals (TFE-0001-01 for TDS/TLS, TFE-0002-00 general)
+    url: https://github.com/JaredCabot/tds-floppy-emulator/tree/main/docs/manual
+    about: Installation, operation, indicator patterns and troubleshooting.
