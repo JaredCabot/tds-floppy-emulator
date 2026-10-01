@@ -6,7 +6,7 @@
 
 uint16_t buttons_step(buttons_t *b, uint16_t raw)
 {
-  raw &= BUTTON_LEFT | BUTTON_RIGHT;
+  raw &= BUTTON_OUT | BUTTON_IN;
 
   /* debounce: accept a new state once it has been stable for BUTTONS_DEBOUNCE_MS */
   if(raw != b->last) { b->last = raw; b->same_ms = 0; }
@@ -16,7 +16,7 @@ uint16_t buttons_step(buttons_t *b, uint16_t raw)
   if(s)                                   /* gesture in progress */
   {
     b->seen |= s;
-    if(s == (BUTTON_LEFT | BUTTON_RIGHT))
+    if(s == (BUTTON_OUT | BUTTON_IN))
     {
       if(!b->armed && ++b->both_ms >= BUTTONS_HOLD_MS) b->armed = true;
     }
@@ -27,14 +27,14 @@ uint16_t buttons_step(buttons_t *b, uint16_t raw)
 
   /* all released: decide */
   uint16_t g = b->armed ? BUTTON_UPDATE     /* (a STALE press never matches: nothing) */
-             : (b->seen == BUTTON_LEFT || b->seen == BUTTON_RIGHT) ? b->seen : 0;
+             : (b->seen == BUTTON_OUT || b->seen == BUTTON_IN) ? b->seen : 0;
   b->seen = 0; b->both_ms = 0; b->armed = false;
   return g;
 }
 
 void buttons_resync(buttons_t *b, uint16_t raw)
 {
-  raw &= BUTTON_LEFT | BUTTON_RIGHT;
+  raw &= BUTTON_OUT | BUTTON_IN;
   b->last = b->stable = raw;               /* take the pins as they are now */
   b->same_ms = BUTTONS_DEBOUNCE_MS;
   b->both_ms = 0;

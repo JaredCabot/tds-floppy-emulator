@@ -24,14 +24,14 @@ The host always sees a normal 1.44 MB floppy (fd0) backed by that buffer.
 4. LED goes out. Host can now read those files from fd0.
 
 ### Read direction (USB -> scope), "next page"
-- Right button (PC8) copies the **next 1.44 MB** of the stick's file list into
+- The top button (PC8; left when horizontal) copies the **next 1.44 MB** of the stick's file list into
   the buffer, erasing the previous page. LED red during copy.
 - Host must re-select fd0 afterwards to refresh, or it throws disk errors.
 - Buffer contents persist after the stick is removed.
 - Re-inserting the stick restarts paging from the first page.
 
 ### Write direction (scope -> USB), "write mode"
-- Left button (PC7) toggles WRITE mode. Solid red LED = WRITE mode on.
+- The bottom button (PC7; right when horizontal) toggles WRITE mode. Solid red LED = WRITE mode on.
 - In WRITE mode, files the host writes to fd0 are copied straight through to the
   USB stick (at floppy speed). LED green during host access, red when committing.
 - Exceeding 1.44 MB per session -> host sees a standard "disk full" error.
@@ -68,9 +68,9 @@ what the USB side is doing:
 | Stock | This firmware | Why |
 |---|---|---|
 | Inserting a stick auto-loads its files into the buffer | Nothing happens until a button is pressed | Auto-load wiped files saved while no stick was present |
-| Left button toggles WRITE mode; the second press copies files written since | Left button copies out **every** file on the internal disk, verifies each on the stick, then erases the internal disk ("take the disk out") | Stock could not copy out existing contents; mirrors the right button ("put the next disk in") |
+| Bottom button toggles WRITE mode; the second press copies files written since | Bottom button copies out **every** file on the internal disk, verifies each on the stick, then erases the internal disk ("take the disk out") | Stock could not copy out existing contents; mirrors the top button ("put the next disk in") |
 | Same-named files on the stick are overwritten | Never overwritten: `NAME_1.EXT`, `NAME_2.EXT`, ... | Keep every copy; the stick holds the canonical files |
 | Red LED solid during transfers | Red LED flashes once every 0.25 s during transfers; distinct error / nothing-to-load blinks | Requested; visible even while the copy blocks |
-| (unknown) | Right button always replaces the whole internal disk (no merge) | Matches the "disk swap" model; kept deliberately for now |
-Unchanged: the right button pages through the stick's root files alphabetically;
+| (unknown) | Top button always replaces the whole internal disk (no merge) | Matches the "disk swap" model; kept deliberately for now |
+Unchanged: the top button pages through the stick's root files alphabetically;
 the green LED shows the scope's drive accesses (it is hard-wired).

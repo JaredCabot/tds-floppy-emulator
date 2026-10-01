@@ -71,8 +71,8 @@ Path: MCU pin -> 74AHC04 inverter -> PMBT2222A open-drain -> 1K pull-up to 5V ->
 ## Control / status
 | MCU pin | Signal | Function |
 |---------|--------|----------|
-| PC7 | BUT_L | Left button - WRITE-mode toggle. Active low (S3 to GND) |
-| PC8 | BUT_R | Right button - NEXT-page. Active low (S4 to GND) |
+| PC7 | BUT_L | Bottom button as installed (**right** when horizontal): DATA OUT; WRITE-mode toggle in the stock firmware. Active low (S3 to GND) |
+| PC8 | BUT_R | Top button as installed, nearest the USB port (**left** when horizontal): DATA IN; NEXT-page in the stock firmware. Active low (S4 to GND) |
 | PB10 | I2C2_DTA | Bi-colour LED (red), **active-low** + display SDA on header J7 |
 | PB11 | I2C2_CLK | Display SCL on header J7 |
 

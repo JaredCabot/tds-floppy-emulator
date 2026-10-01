@@ -5,7 +5,7 @@
                                      and check every file on it against the set
 
 Workflow: `write`, eject the stick safely, insert it in the emulator, press the
-RIGHT button, run `check` (expects page 1); press RIGHT again, `check` (page 2).
+DATA IN, run `check` (expects page 1); press DATA IN again, `check` (page 2).
 Contents are pseudo-random from fixed seeds, so nothing else needs storing.
 
 Expected on the emulator's disk (FAT32, GPT or exFAT sticks alike):

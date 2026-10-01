@@ -52,8 +52,8 @@ format.
 
 | Control | Action |
 |---|---|
-| **Right (lower as installed) button** - DATA IN, *put a disk in* | Replaces the internal disk with the next batch of files from the root of the USB stick (alphabetical, as many as fit on the disk, 1.44 MB or 720 KB; each sector verified as it is written). Press again for the next batch; wraps to the first after the last. Skips folders, hidden/system files and files larger than the disk. Long names appear on the scope as 8.3 short names (`TEK000~1.BMP`). |
-| **Left (upper as installed) button** - DATA OUT, *take the disk out* | Copies every file on the internal disk to the stick, keeping the original dates and any folders the scope made. Never overwrites: a clash is saved as `NAME_1.EXT`, `NAME_2.EXT`, ...; a file already there and identical is not copied twice. Each file is read back and compared; only if all are safely on the stick is the internal disk erased, blank for new data. Any failure leaves it untouched. |
+| **Top button as installed (left when horizontal, nearest the USB port)** - DATA IN, *put a disk in* | Replaces the internal disk with the next batch of files from the root of the USB stick (alphabetical, as many as fit on the disk, 1.44 MB or 720 KB; each sector verified as it is written). Press again for the next batch; wraps to the first after the last. Skips folders, hidden/system files and files larger than the disk. Long names appear on the scope as 8.3 short names (`TEK000~1.BMP`). |
+| **Bottom button as installed (right when horizontal)** - DATA OUT, *take the disk out* | Copies every file on the internal disk to the stick, keeping the original dates and any folders the scope made. Never overwrites: a clash is saved as `NAME_1.EXT`, `NAME_2.EXT`, ...; a file already there and identical is not copied twice. Each file is read back and compared; only if all are safely on the stick is the internal disk erased, blank for new data. Any failure leaves it untouched. |
 | **The same button again, while the LED flashes** - *cancel* | Stops the transfer at the next safe point; the LED gives one long blink. DATA OUT: any partly copied file is deleted, files already copied stay on the stick, the internal disk is not erased. DATA IN: the disk keeps the files loaded so far and the next press loads the same batch again (the disk's previous contents are gone: DATA IN erases it first). A firmware update cannot be cancelled. |
 | Inserting a stick | Does nothing until a button is pressed. Sticks may be FAT12/16/32 or exFAT, MBR or GPT partitioned; on exFAT, long names get Windows-style 8.3 names (`SCOPEC~1.BMP`). |
 | **Both buttons held 3 s** - *firmware update* | Red LED goes solid; release to install `UPDATE.UPD` from the stick (~5 s, safe against power loss). See [docs/13](docs/13-firmware-update.md). From 1.2.0, with no `UPDATE.UPD` on the stick, it writes a **status report** instead, `EMUSTAT.TXT`: firmware version and build ID, the unit's serial number, the internal disk's density and contents, health counters and the last transfer. |
@@ -65,7 +65,7 @@ format.
 | Red, off | Idle |
 | Red, flashing once every 0.25 s | Copying files (either direction) - don't remove the stick |
 | Red, 6 quick blinks | Error (no stick / USB error / verify failed / unreadable disk / scope busy for 15 s); internal disk unchanged |
-| Red, 2 quick blinks | Right button: nothing on the stick to load; internal disk unchanged |
+| Red, 2 quick blinks | DATA IN: nothing on the stick to load; internal disk unchanged |
 | Red, 3 slow blinks | Stick format not supported (NTFS, unformatted, or unusual sector size): reformat it as exFAT or FAT32. Internal disk unchanged |
 | Red, one long blink (1 s) | Transfer cancelled: the button that started it was pressed again while the LED was flashing |
 | Red, fast continuous | The internal SPI flash has failed (self-test at power-up, or a track could not be stored). Kept after power-off until the disk is rebuilt: save the files with DATA OUT. If the self-test fails, the unit shows no disk |
@@ -97,7 +97,7 @@ It has only been tested on the TDS 794D and TDS 784D. Reports from other
 devices, working or not, are welcome as GitHub issues.
 
 ## Improvements over the stock firmware
-- The left button can copy out **everything** on the internal disk (stock could
+- The DATA OUT button can copy out **everything** on the internal disk (stock could
   not copy out data on internal memory that was saved before the USB was
   inserted), verifies it on the stick and never overwrites stick files.
   Folders the scope made are copied too, and files already on the stick are

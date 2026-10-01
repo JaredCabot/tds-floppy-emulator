@@ -492,41 +492,41 @@ static unsigned btn_run(const btn_seg_t *seg, unsigned n, uint16_t *out, uint32_
 
 static void test_buttons(void)
 {
-  enum { L = BUTTON_LEFT, R = BUTTON_RIGHT, LR = BUTTON_LEFT | BUTTON_RIGHT };
+  enum { O = BUTTON_OUT, I = BUTTON_IN, OI = BUTTON_OUT | BUTTON_IN };
   uint16_t g[8]; uint32_t at[8]; bool armed; unsigned n;
 
-  const btn_seg_t right[] = { {0,100}, {R,200}, {0,200} };
-  n = btn_run(right, 3, g, at, &armed);
-  CHECK(n == 1 && g[0] == BUTTON_RIGHT, "right press -> RIGHT");
-  CHECK(n == 1 && at[0] >= 300, "RIGHT fires on release, not on press");
+  const btn_seg_t in[] = { {0,100}, {I,200}, {0,200} };
+  n = btn_run(in, 3, g, at, &armed);
+  CHECK(n == 1 && g[0] == BUTTON_IN, "DATA IN press -> IN");
+  CHECK(n == 1 && at[0] >= 300, "IN fires on release, not on press");
 
-  const btn_seg_t bounce[] = { {0,50}, {L,3}, {0,4}, {L,2}, {0,5}, {L,6}, {0,300} };
+  const btn_seg_t bounce[] = { {0,50}, {O,3}, {0,4}, {O,2}, {0,5}, {O,6}, {0,300} };
   n = btn_run(bounce, 7, g, at, &armed);
   CHECK(n == 0, "contact bounce shorter than the debounce time -> nothing");
 
-  const btn_seg_t bouncy[] = { {0,50}, {L,3}, {0,2}, {L,200}, {0,4}, {L,3}, {0,300} };
+  const btn_seg_t bouncy[] = { {0,50}, {O,3}, {0,2}, {O,200}, {0,4}, {O,3}, {0,300} };
   n = btn_run(bouncy, 7, g, at, &armed);
-  CHECK(n == 1 && g[0] == BUTTON_LEFT, "bouncy left press -> exactly one LEFT");
+  CHECK(n == 1 && g[0] == BUTTON_OUT, "bouncy DATA OUT press -> exactly one OUT");
 
-  const btn_seg_t upd[] = { {0,50}, {LR,3100}, {0,100} };
+  const btn_seg_t upd[] = { {0,50}, {OI,3100}, {0,100} };
   n = btn_run(upd, 3, g, at, &armed);
   CHECK(n == 1 && g[0] == BUTTON_UPDATE && armed, "both held 3.1 s -> armed, then UPDATE only");
 
-  const btn_seg_t shortboth[] = { {0,50}, {LR,1000}, {0,100} };
+  const btn_seg_t shortboth[] = { {0,50}, {OI,1000}, {0,100} };
   n = btn_run(shortboth, 3, g, at, &armed);
-  CHECK(n == 0 && !armed, "both held 1 s -> nothing (not LEFT, not RIGHT)");
+  CHECK(n == 0 && !armed, "both held 1 s -> nothing (not OUT, not IN)");
 
-  const btn_seg_t staggered[] = { {0,50}, {L,500}, {LR,3100}, {R,400}, {0,100} };
+  const btn_seg_t staggered[] = { {0,50}, {O,500}, {OI,3100}, {I,400}, {0,100} };
   n = btn_run(staggered, 5, g, at, &armed);
-  CHECK(n == 1 && g[0] == BUTTON_UPDATE, "left, then both 3.1 s, released one at a time -> one UPDATE");
+  CHECK(n == 1 && g[0] == BUTTON_UPDATE, "OUT, then both 3.1 s, released one at a time -> one UPDATE");
 
-  const btn_seg_t broken[] = { {0,50}, {LR,2000}, {L,100}, {LR,2000}, {0,100} };
+  const btn_seg_t broken[] = { {0,50}, {OI,2000}, {O,100}, {OI,2000}, {0,100} };
   n = btn_run(broken, 5, g, at, &armed);
   CHECK(n == 0 && !armed, "hold interrupted (2 s + 2 s) -> nothing: must be continuous");
 
-  const btn_seg_t two[] = { {0,50}, {L,200}, {0,300}, {R,200}, {0,300} };
+  const btn_seg_t two[] = { {0,50}, {O,200}, {0,300}, {I,200}, {0,300} };
   n = btn_run(two, 5, g, at, &armed);
-  CHECK(n == 2 && g[0] == BUTTON_LEFT && g[1] == BUTTON_RIGHT, "left then right, separately -> LEFT, RIGHT");
+  CHECK(n == 2 && g[0] == BUTTON_OUT && g[1] == BUTTON_IN, "OUT then IN, separately -> OUT, IN");
 
   const btn_seg_t idle[] = { {0,10000} };
   n = btn_run(idle, 1, g, at, &armed);
@@ -543,22 +543,22 @@ static uint16_t btn_hold(buttons_t *b, uint16_t raw, unsigned ms)
 }
 static void test_buttons_resync(void)
 {
-  enum { L = BUTTON_LEFT, R = BUTTON_RIGHT, LR = BUTTON_LEFT | BUTTON_RIGHT };
+  enum { O = BUTTON_OUT, I = BUTTON_IN, OI = BUTTON_OUT | BUTTON_IN };
   buttons_t b = {0};
-  uint16_t got = btn_hold(&b, R, 100);             /* pressed before the pause ... */
-  buttons_resync(&b, R);                           /* ... and still held after it */
-  got |= btn_hold(&b, R, 200) | btn_hold(&b, 0, 100);
+  uint16_t got = btn_hold(&b, I, 100);             /* pressed before the pause ... */
+  buttons_resync(&b, I);                           /* ... and still held after it */
+  got |= btn_hold(&b, I, 200) | btn_hold(&b, 0, 100);
   CHECK(got == 0, "button held across a pause: no gesture on release");
-  got = btn_hold(&b, L, 100) | btn_hold(&b, 0, 100);
-  CHECK(got == BUTTON_LEFT, "after the pause, a new press works");
+  got = btn_hold(&b, O, 100) | btn_hold(&b, 0, 100);
+  CHECK(got == BUTTON_OUT, "after the pause, a new press works");
 
   buttons_t c = {0};
-  btn_hold(&c, LR, 500);                           /* both, 0.5 s before the pause */
-  buttons_resync(&c, LR);
-  got = btn_hold(&c, LR, 1000) | btn_hold(&c, 0, 100);
+  btn_hold(&c, OI, 500);                           /* both, 0.5 s before the pause */
+  buttons_resync(&c, OI);
+  got = btn_hold(&c, OI, 1000) | btn_hold(&c, 0, 100);
   CHECK(got == 0, "both held across a pause, then 1 s: nothing (the pause is not hold time)");
-  buttons_resync(&c, LR);
-  got = btn_hold(&c, LR, 3100) | btn_hold(&c, 0, 100);
+  buttons_resync(&c, OI);
+  got = btn_hold(&c, OI, 3100) | btn_hold(&c, 0, 100);
   CHECK(got == BUTTON_UPDATE, "a deliberate 3 s two-button hold after a pause still updates");
 }
 /* 720 KB (DD) geometry: 9 sectors in 6250 bytes, same field layout */

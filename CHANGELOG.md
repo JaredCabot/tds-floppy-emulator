@@ -95,9 +95,9 @@ First release.
   oscilloscopes.
 - Internal 1.44 MB disk in SPI flash, written back through a power-safe journal:
   a power cut loses at most the write in progress.
-- DATA IN (lower button): load the next batch of files from a USB flash drive
+- DATA IN (upper button): load the next batch of files from a USB flash drive
   (FAT12/16/32 or exFAT; MBR or GPT), every sector verified.
-- DATA OUT (upper button): copy everything on the internal disk, folders
+- DATA OUT (lower button): copy everything on the internal disk, folders
   included, to the flash drive, verify each file, never overwrite, then erase
   the internal disk. Identical files already on the flash drive are not copied
   twice.

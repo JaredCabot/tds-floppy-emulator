@@ -40,9 +40,9 @@ void watchdog_start(void);
 static inline void watchdog_feed(void) { WDT->cmd = 0xAAAAu; }
 
 /* Front-panel buttons (PC7, PC8; active low, pulled up). */
-#define BTN_LEFT   GPIO_PINS_7    /* PC7: DATA OUT (upper button as installed) */
-#define BTN_RIGHT  GPIO_PINS_8    /* PC8: DATA IN (lower button) */
-/* Pressed buttons as BUTTON_LEFT / BUTTON_RIGHT bits (buttons.h). */
+#define BTN_OUT    GPIO_PINS_7    /* PC7: DATA OUT (bottom as installed, right when horizontal) */
+#define BTN_IN     GPIO_PINS_8    /* PC8: DATA IN (top as installed, nearest the USB port) */
+/* Pressed buttons as BUTTON_OUT / BUTTON_IN bits (buttons.h). */
 uint16_t buttons_raw(void);
 
 /* Blocking millisecond delay driven by the CPU cycle counter (DWT). */

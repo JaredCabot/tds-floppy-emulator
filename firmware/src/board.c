@@ -87,7 +87,7 @@ void board_init(void)
 uint16_t buttons_raw(void)
 {
   uint32_t low = ~GPIOC->idt;
-  return (uint16_t)(((low & BTN_LEFT) ? BUTTON_LEFT : 0u) | ((low & BTN_RIGHT) ? BUTTON_RIGHT : 0u));
+  return (uint16_t)(((low & BTN_OUT) ? BUTTON_OUT : 0u) | ((low & BTN_IN) ? BUTTON_IN : 0u));
 }
 
 void watchdog_start(void)

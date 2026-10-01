@@ -23,12 +23,12 @@ typedef enum {
   XFER_STATUS,        /* update: no UPDATE.UPD, so the status report was written instead */
 } xfer_result_t;
 
-/* DATA IN (right button): replace the internal disk with the next "page" of
+/* DATA IN (top button as installed): replace the internal disk with the next "page" of
  * the stick's root files - alphabetical, as many as fit in 1.44 MB. Repeated
  * calls page through the stick and wrap to the start. */
 xfer_result_t xfer_in(void);
 
-/* DATA OUT (left button) = "take the disk out": copy every file on the internal
+/* DATA OUT (bottom button as installed) = "take the disk out": copy every file on the internal
  * disk to the stick's root (overwriting same-named files, keeping the original
  * dates), read them all back and compare, and only if everything matches, erase
  * the internal disk to a blank volume ready for new data. On any failure the

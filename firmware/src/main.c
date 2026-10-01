@@ -3,8 +3,8 @@
  *
  * The scope sees a 1.44 MB floppy (floppy.c) whose contents live in the SPI
  * flash (buffer.c). A USB stick moves files in and out (xfer.c):
- *   RIGHT button (PC8): DATA IN - load the next page of the stick's files
- *   LEFT  button (PC7): DATA OUT - copy every file on the internal disk to it,
+ *   DATA IN  button (PC8, top as installed): load the next page of the stick's files
+ *   DATA OUT button (PC7, bottom as installed): copy every file on the internal disk to it,
  *                       verify, then blank the internal disk ("take the disk out")
  *   Inserting a stick does nothing by itself: transfers only on a button press
  *   (Jared's requirement; the stock unit auto-loaded on insertion).
@@ -31,7 +31,7 @@
  * dbg_flash_req = 3 / 4: write / read dbg_flash_len bytes of stick file dbg_name
  *                 at offset dbg_flash_addr via dbg_flash_buf (tools/stick.ps1);
  *                 dbg_flash_len = bytes done, or negative on error.
- * dbg_button    = 1 / 2 / 3: RIGHT (data in) / LEFT (data out) / firmware update,
+ * dbg_button    = 1 / 2 / 3: DATA IN / DATA OUT / firmware update,
  *                 as the real buttons do; dbg_xfer_result/_count report the outcome.
  * dbg_fw_version = FW_VERSION of the running firmware.
  * These need physical SWD access, which can reflash the MCU anyway, so they stay
@@ -60,7 +60,7 @@ static void buttons_init(void)
   gpio_init_type gi;
   crm_periph_clock_enable(CRM_GPIOC_PERIPH_CLOCK, TRUE);
   gpio_default_para_init(&gi);
-  gi.gpio_pins = BTN_LEFT | BTN_RIGHT;
+  gi.gpio_pins = BTN_OUT | BTN_IN;
   gi.gpio_mode = GPIO_MODE_INPUT;
   gi.gpio_pull = GPIO_PULL_UP;
   gpio_init(GPIOC, &gi);
@@ -197,13 +197,13 @@ int main(void)
       led_armed = buttons_armed(&btn);
       if(led_armed) led_red_on(); else led_red_off();
     }
-    if(unlocked && dbg_button == 1) b = BUTTON_RIGHT;
-    if(unlocked && dbg_button == 2) b = BUTTON_LEFT;
+    if(unlocked && dbg_button == 1) b = BUTTON_IN;
+    if(unlocked && dbg_button == 2) b = BUTTON_OUT;
     if(unlocked && dbg_button == 3) b = BUTTON_UPDATE;
     dbg_button = 0;
     if(!flash_ok) b = 0;                                 /* nothing to transfer to or from */
-    if(b == BUTTON_RIGHT) xfer_note("DATA IN", run(xfer_in));
-    else if(b == BUTTON_LEFT) xfer_note("DATA OUT", run(xfer_out));
+    if(b == BUTTON_IN) xfer_note("DATA IN", run(xfer_in));
+    else if(b == BUTTON_OUT) xfer_note("DATA OUT", run(xfer_out));
     else if(b == BUTTON_UPDATE && run(xfer_update) == XFER_OK)
     {
       led_red_off();

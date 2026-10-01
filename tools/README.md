@@ -31,7 +31,7 @@ start with `init`, `halt` or `reg`: put OpenOCD commands in a `-f` script.
 | Tool | What |
 |---|---|
 | `fdstat.ps1 [-Steps N]` | Floppy status: uptime, INDEX/steps/selects, current track, load/store times, write counters, self-check counters (must be 0), track load/store trace, step log |
-| `button.ps1 in\|out\|both\|status` | Press the right (in) / left (out) / both buttons (update, or the status report) over SWD and report the result with its time; after an update it detects the restart, identifies the installed image and keeps the SWD tools' guard truthful, split into waiting, USB and internal flash; `status` shows version, build ID, density, stick-ready and the last transfer |
+| `button.ps1 in\|out\|both\|status` | Press the DATA IN / DATA OUT / both buttons (update, or the status report) over SWD and report the result with its time; after an update it detects the restart, identifies the installed image and keeps the SWD tools' guard truthful, split into waiting, USB and internal flash; `status` shows version, build ID, density, stick-ready and the last transfer |
 | `gatelog.ps1` | First 64 write gates (track, ID/data fields decoded, visible) and first 64 steps since reset - used to debug formatting |
 | `reformat.ps1` | Erase the internal disk to a blank FAT12 volume and restart the firmware |
 | `tryread.ps1 [-Poke "..."]` | Raise DISK CHANGE (so the TDS re-reads the disk) and make the TDS access fd0:; optional extra OpenOCD pokes |
@@ -44,7 +44,7 @@ start with `init`, `halt` or `reg`: put OpenOCD commands in a `-f` script.
 | `check_image_end.py ELF BIN` | Run by `make`: fails the build if the image length the firmware computes its build ID over differs from the `.bin` |
 | `release_refresh.py` | Runs `make` and `make test` (stops on failure), then copies `tdsfloppy_install.hex` into `release/`, verify its bootloader and firmware regions against the build, and update the version, build ID, size and SHA-256 in `release/README.md` |
 | `dirtest.py make` / `check` / `again` | DATA OUT with folders: the scope makes folders on fd0: and saves into them; after DATA OUT every file must be on the stick in its folder, byte for byte; `again` checks an identical re-save makes no `_1` duplicate |
-| `testset.py write E:` / `check` | The hands-on USB test: put 10 test files (zero-length, odd sizes, long / lower-case names, two pages, skip cases) on a stick, then after each right-button press check every file on the emulator's disk (docs/11) |
+| `testset.py write E:` / `check` | The hands-on USB test: put 10 test files (zero-length, odd sizes, long / lower-case names, two pages, skip cases) on a stick, then after each DATA IN press check every file on the emulator's disk (docs/11) |
 
 ## The TDS over GPIB (Python)
 | Tool | What |

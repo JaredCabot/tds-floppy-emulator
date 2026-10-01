@@ -1,6 +1,6 @@
 # button.ps1 - press an emulator button over SWD and report the result.
-#   powershell -File tools\button.ps1 in    (RIGHT: data in, stick -> disk)
-#   powershell -File tools\button.ps1 out   (LEFT: data out, disk -> stick)
+#   powershell -File tools\button.ps1 in    (DATA IN: stick -> disk)
+#   powershell -File tools\button.ps1 out   (DATA OUT: disk -> stick)
 #   powershell -File tools\button.ps1 both  (both buttons: firmware update from UPDATE.UPD,
 #    or the status report EMUSTAT.TXT without one; an update restarts the
 #    emulator, which is detected and the installed image identified)

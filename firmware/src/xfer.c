@@ -229,7 +229,7 @@ xfer_result_t xfer_in(void)
     if(!next_file(s_last, &fi)) { f_mount(0, "0:", 0); return XFER_NOTHING; }
   }
 
-  cancel_arm(BUTTON_RIGHT);
+  cancel_arm(BUTTON_IN);
   timing_reset();
   TIC(tw);
   if(!flpy_eject(cancelled)) { f_mount(0, "0:", 0); cancel_arm(0); return why(XFER_BUSY); }
@@ -444,7 +444,7 @@ xfer_result_t xfer_out(void)
 {
   xfer_dbg_files = xfer_dbg_bytes = 0;
   { xfer_result_t m = mount_stick(); if(m != XFER_OK) return m; }
-  cancel_arm(BUTTON_LEFT);
+  cancel_arm(BUTTON_OUT);
   timing_reset();
   TIC(tw);
   if(!flpy_eject(cancelled)) { f_mount(0, "0:", 0); cancel_arm(0); return why(XFER_BUSY); }
