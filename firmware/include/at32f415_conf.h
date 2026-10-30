@@ -31,6 +31,7 @@ extern "C" {
 #define EXINT_MODULE_ENABLED   /* Phase 1c: STEP interrupt */
 #define USB_MODULE_ENABLED     /* USB host (OTGFS) for the stick */
 #define WDT_MODULE_ENABLED     /* independent watchdog: a hang resets the unit */
+#define DEBUG_MODULE_ENABLED   /* pause the watchdog while halted by SWD */
 
 #include "at32f415.h"
 
@@ -70,6 +71,9 @@ extern "C" {
 #endif
 #ifdef WDT_MODULE_ENABLED
   #include "at32f415_wdt.h"
+#endif
+#ifdef DEBUG_MODULE_ENABLED
+  #include "at32f415_debug.h"
 #endif
 
 /* driver parameter-check macro (drivers reference assert_param) */

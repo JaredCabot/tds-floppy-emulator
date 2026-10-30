@@ -88,4 +88,9 @@ void buffer_begin_rebuild(void);
 void buffer_end_rebuild(void);
 extern const fatimg_io_t buffer_fatimg_io;
 
+/* Counters for the status report and the tests (SWD-readable). */
+extern volatile uint32_t buffer_dbg_writebacks;        /* journal writes since power-on */
+extern volatile uint32_t buffer_dbg_recovered;         /* tracks restored from the journal at boot */
+extern volatile uint32_t buffer_dbg_marker_repaired;   /* boots that found a sound disk without its marker */
+
 #endif /* BUFFER_H */

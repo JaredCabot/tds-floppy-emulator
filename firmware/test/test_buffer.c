@@ -117,7 +117,6 @@ static void test_power_cuts(void)
     reboot();
     g_ops = 0; g_cut = c;
     if(setjmp(g_power) == 0) scenario();       /* runs until the power goes */
-    extern volatile uint32_t buffer_dbg_recovered;
     uint32_t before = buffer_dbg_recovered;
     reboot();
     restored += buffer_dbg_recovered != before;
@@ -153,7 +152,6 @@ static void test_bad_sector(void)
   g_bad_lo = 1; g_bad_hi = 0;
 
   /* the fault survives a power cycle; the journal still holds the track's data */
-  extern volatile uint32_t buffer_dbg_recovered;
   uint32_t before = buffer_dbg_recovered;
   reboot();
   CHECK(buffer_fault(), "a write-back fault is remembered across a power cycle");
@@ -175,19 +173,8 @@ static void test_unchanged_skipped(void)
   CHECK(g_erases == 0 && track_gen(5) == 1, "an unchanged track is not rewritten (no erase: less wear)");
 }
 
-static void test_legacy_and_blank(void)
+static void test_blank(void)
 {
-  memset(g_flash, 0xFF, sizeof g_flash);       /* a 1.0.0 image: marker in slot 0's spare area */
-  pattern(&g_flash[0], 0, 1);
-  pattern(&g_flash[3u * BUF_SLOT_SIZE], 3, 1);
-  memcpy(&g_flash[BUF_TRACK_SIZE], "TDSFBUF1", 8);
-  reboot();
-  CHECK(track_gen(0) == 1 && track_gen(3) == 1, "an image from 1.0.0 is taken over, not re-formatted");
-  CHECK(memcmp(&g_flash[BUF_META_ADDR], "TDSFBUF2", 8) == 0, "... and gets the new marker");
-  store(3, 2);
-  reboot();
-  CHECK(track_gen(3) == 2, "... and write-back works on it");
-
   memset(g_flash, 0xFF, sizeof g_flash);       /* blank flash */
   reboot();
   CHECK(g_flash[510] == 0x55 && g_flash[511] == 0xAA, "a blank flash is formatted (boot sector)");
@@ -198,7 +185,6 @@ static void test_legacy_and_blank(void)
  * disk must be repaired, never formatted; a rebuild cut short still formats */
 static void test_marker_damage(void)
 {
-  extern volatile uint32_t buffer_dbg_marker_repaired;
   memset(g_flash, 0xFF, sizeof g_flash);
   reboot();                                    /* blank: formatted */
   store(5, 1); store(9, 1);                    /* (not track 0: it holds the boot sector and FATs) */
@@ -222,7 +208,6 @@ static void test_marker_damage(void)
  * switched back, keeping a recorded fault */
 static void test_density(void)
 {
-  extern volatile uint32_t buffer_dbg_marker_repaired;
   static uint8_t s[512];
   memset(g_flash, 0xFF, sizeof g_flash);
   reboot();
@@ -281,7 +266,7 @@ int main(void)
   test_power_cuts();
   test_bad_sector();
   test_unchanged_skipped();
-  test_legacy_and_blank();
+  test_blank();
   printf(fails ? "BUFFER TESTS: %d FAILED\n" : "BUFFER TESTS PASSED\n", fails);
   return fails != 0;
 }

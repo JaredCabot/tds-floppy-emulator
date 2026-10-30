@@ -3,8 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-
-
 /*
  * File transfers between the USB stick (root directory) and the internal
  * 1.44 MB disk (the SPI-flash buffer the scope sees as fd0:). docs/11-usb.md.
@@ -29,10 +27,10 @@ typedef enum {
 xfer_result_t xfer_in(void);
 
 /* DATA OUT (bottom button as installed) = "take the disk out": copy every file on the internal
- * disk to the stick's root (overwriting same-named files, keeping the original
- * dates), read them all back and compare, and only if everything matches, erase
- * the internal disk to a blank volume ready for new data. On any failure the
- * internal disk is left untouched. */
+ * disk to the stick's root (never overwriting: a same-named file gets a numeric
+ * tail, NAME~1.EXT; original dates kept), read them all back and compare, and
+ * only if everything matches, erase the internal disk to a blank volume ready
+ * for new data. On any failure the internal disk is left untouched. */
 xfer_result_t xfer_out(void);
 
 /* Stick removed/replaced: data in starts again from the first page. */
@@ -45,7 +43,8 @@ extern volatile uint32_t xfer_dbg_cancel_at;
 
 /* FIRMWARE UPDATE (both buttons held 3 s): check 0:/UPDATE.UPD and stage it in
  * the SPI flash for the bootloader. XFER_OK means staged: the caller restarts.
- * XFER_NOTHING: no such file. Anything else: nothing changed. docs/13. */
+ * XFER_STATUS: no such file, so EMUSTAT.TXT was written to the stick instead.
+ * Anything else: nothing changed. docs/13. */
 xfer_result_t xfer_update(void);
 
 /* Record a DATA IN / DATA OUT and its result for the status report. */

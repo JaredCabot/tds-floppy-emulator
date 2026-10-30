@@ -32,9 +32,10 @@
 #include "board.h"
 #include "mfm.h"
 #include "buffer.h"
-_Static_assert(BUF_TRACKS >= FLPY_CYL_LIMIT * FLPY_HEADS, "every track the head can reach needs a slot");
 #include "at32f415_conf.h"
 #include <string.h>
+_Static_assert(BUF_TRACKS >= FLPY_CYL_LIMIT * FLPY_HEADS, "every track the head can reach needs a slot");
+_Static_assert(FLPY_SCRATCH_SIZE == MFM_TRACK_SIZE, "the scratch the floppy lends out is one track buffer");
 
 /* interrupt handlers (vector table in the startup file) */
 void DMA1_Channel3_IRQHandler(void);
@@ -122,15 +123,6 @@ volatile uint32_t flpy_dbg_load_us, flpy_dbg_store_us;
 volatile uint32_t flpy_dbg_wr_gates, flpy_dbg_wr_sectors, flpy_dbg_wr_badcrc, flpy_dbg_wr_lost;
 /* self-checks: should all stay 0 */
 volatile uint32_t flpy_dbg_store_verify_fail, flpy_dbg_load_while_dirty, flpy_dbg_wr_track_changed;
-/* per write gate: A = ms<<16 | cyl<<8 | head;  B = ids<<24 | data<<16 | visible<<8 | first sector */
-volatile uint32_t flpy_dbg_gate_a[64], flpy_dbg_gate_b[64];
-static uint8_t s_wr_nid, s_wr_ndata, s_wr_first;
-volatile uint32_t flpy_dbg_trace[64], flpy_dbg_trace_n;   /* ms<<16 | store<<15 | head<<8 | cyl */
-volatile uint32_t flpy_dbg_steplog[64];                   /* ms<<16 | dir_in<<8 | cyl */
-static void trace(bool store, uint8_t cyl, uint8_t head)
-{
-  flpy_dbg_trace[flpy_dbg_trace_n++ & 63] = (flpy_dbg_ms << 16) | ((uint32_t)store << 15) | ((uint32_t)head << 8) | cyl;
-}
 
 /* ---- outputs ---- */
 static void outputs_apply(void)
@@ -264,7 +256,7 @@ static void wr_field(uint8_t mark, const uint8_t *f, unsigned len, void *ctx)
     if(len < 6) return;                            /* C H R N + CRC */
     uint8_t b[8] = { 0xA1, 0xA1, 0xA1, 0xFE, f[0], f[1], f[2], f[3] };
     if(mfm_crc_ccitt(0xFFFF, b, 8) == ((f[4] << 8) | f[5]) && f[2] >= 1 && f[2] <= s_geom->sectors)
-    { s_wr_next = f[2] - 1; s_wr_nid++; }
+    s_wr_next = f[2] - 1;
     return;
   }
   if(len != MFM_SECTOR_SIZE + 2) { flpy_dbg_wr_badcrc++; return; }
@@ -276,7 +268,6 @@ static void wr_field(uint8_t mark, const uint8_t *f, unsigned len, void *ctx)
   memcpy(&s_trk[s_wr_next * MFM_SECTOR_SIZE], f, MFM_SECTOR_SIZE);
   s_crc[s_wr_next] = crc;
   s_trk_dirty = true;
-  if(s_wr_ndata++ == 0) s_wr_first = (uint8_t)s_wr_next;
   flpy_dbg_wr_sectors++;
   s_wr_next++;                                     /* multi-sector write continues */
 }
@@ -297,12 +288,23 @@ static void wr_decode_to(unsigned end)             /* decode ring entries up to 
   }
 }
 
+/* The host is writing to THIS drive: WGATE asserted while it has us selected
+ * and a disk is in (what starts a write in EXINT9_5_IRQHandler). */
+static bool gate_active(void)
+{
+  return in_low(GPIOB, PIN_WGATE) && s_selected && s_media && !st_wprot;
+}
+
 /* WDATA edges are captured continuously (no start-up latency at WGATE, which
- * once lost the first A1 of a data field). Outside a write, skip them. */
+ * once lost the first A1 of a data field). Outside a write, skip them, unless
+ * our gate has just gone active and its interrupt is still to run: those edges
+ * are the start of the write. Edges from a gate that is not ours (another
+ * drive on the cable, or a disk we have ejected) are never kept: they would
+ * be decoded as the start of our next write (review 2026-10-30). */
 static void wr_consume_to(unsigned end)
 {
   if(s_writing) wr_decode_to(end);
-  else if(!in_low(GPIOB, PIN_WGATE)) s_wr_idx = end;   /* gate down: keep for wr_start */
+  else if(!gate_active()) s_wr_idx = end;
 }
 
 void DMA1_Channel2_IRQHandler(void)
@@ -337,7 +339,6 @@ static void wr_start(void)
 {
   /* Everything the capture ISR (higher priority) uses is set up BEFORE
    * s_writing, which is what makes it decode. */
-  s_wr_nid = s_wr_ndata = 0; s_wr_first = 0xFF;
   s_wr_visible = track_visible();
   s_wr_trk_cyl = s_trk_cyl; s_wr_trk_head = s_trk_head;
   /* Which sector? A normal write starts in gap 2 of the sector whose ID the
@@ -370,19 +371,13 @@ static void wr_stop(void)
   if(sw >= 0) s_switch_to = (int8_t)sw;
   s_wr_end_ms = flpy_dbg_ms;
   s_last_active_ms = flpy_dbg_ms;
-  unsigned g = flpy_dbg_wr_gates - 1u;
-  if(g < 64)                                       /* keep the FIRST 64 */
-  {
-    flpy_dbg_gate_a[g] = (flpy_dbg_ms << 16) | ((uint32_t)s_wr_trk_cyl << 8) | s_wr_trk_head;
-    flpy_dbg_gate_b[g] = ((uint32_t)s_wr_nid << 24) | ((uint32_t)s_wr_ndata << 16) | ((uint32_t)s_wr_visible << 8) | s_wr_first;
-  }
   outputs_apply();
 }
 
 void EXINT9_5_IRQHandler(void)
 {
   exint_flag_clear(EXINT_LINE_9);
-  bool gate = in_low(GPIOB, PIN_WGATE) && s_selected && s_media && !st_wprot;
+  bool gate = gate_active();
   if(gate && !s_writing) wr_start();
   else if(!gate && s_writing) wr_stop();
 }
@@ -434,8 +429,6 @@ void EXINT1_IRQHandler(void)                       /* STEP (trailing edge) */
   st_dskchg = false;                               /* a selected STEP clears DISK CHANGE */
   s_seek_ms = SEEK_COMPLETE_MS;
   outputs_apply();
-  if(flpy_dbg_step_count < 64)                    /* keep the FIRST 64 (debugging a format) */
-    flpy_dbg_steplog[flpy_dbg_step_count] = (flpy_dbg_ms << 16) | ((uint32_t)dir_in << 8) | s_cyl;
   flpy_dbg_step_count++;
 }
 
@@ -459,9 +452,15 @@ void SysTick_Handler(void)
 {
   flpy_dbg_ms++;
   board_tick_1ms();                                /* LED activity flashing */
+  /* These countdowns are set by the DMA and EXINT handlers, which run at a
+   * higher priority than SysTick: a decrement they interrupt would store a
+   * stale value over theirs (review 2026-10-30). */
+  uint32_t pm = __get_PRIMASK();
+  __disable_irq();
   if(s_index_ms && --s_index_ms == 0) outB_deassert(PIN_INDEX);
   if(s_seek_ms && --s_seek_ms == 0) outputs_apply();
   if(s_spinup_ms && --s_spinup_ms == 0 && s_selected && s_media) { st_ready = true; outputs_apply(); }
+  __set_PRIMASK(pm);
 }
 
 static void irq_init(void)
@@ -530,7 +529,6 @@ static void wb_poll(void)
   if(!s_pend_busy || !buffer_wb_poll()) return;
   if(!buffer_wb_ok()) flpy_dbg_store_verify_fail++;
   s_pend_busy = false;
-  trace(true, (uint8_t)(s_pend_t / FLPY_HEADS), (uint8_t)(s_pend_t % FLPY_HEADS));
 }
 
 static void wb_finish(void) { while(s_pend_busy) wb_poll(); }
@@ -587,7 +585,6 @@ static void track_load(uint8_t cyl, uint8_t head)
   }
   s_trk_valid = true;
   flpy_dbg_load_us = (DWT->CYCCNT - t0) / (system_core_clock / 1000000u);
-  trace(false, cyl, head);
 }
 
 static void geom_apply(bool dd)
@@ -708,8 +705,6 @@ void flpy_no_disk(void)
   outputs_apply();
 }
 
-bool flpy_idle(void) { return !s_selected && !s_writing && !s_trk_dirty && !s_pend_busy; }
-
 void *flpy_scratch(void)
 {
   if(s_started && (s_media || s_pend_busy)) return NULL;   /* in use by the floppy */
@@ -721,7 +716,3 @@ void *flpy_scratch2(void)
   if(s_started && (s_media || s_pend_busy)) return NULL;
   return s_trkbuf[s_live];                         /* the live track: flpy_insert() reloads it */
 }
-
-uint8_t flpy_current_cyl(void)  { return s_cyl; }
-uint8_t flpy_current_head(void) { return s_head; }
-bool    flpy_selected(void)     { return s_selected; }

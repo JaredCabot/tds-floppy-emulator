@@ -78,10 +78,22 @@ void board_tick_1ms(void)
   if(s_act && ++s_act_ms >= LED_ACTIVITY_PERIOD_MS / 2u) { s_act_ms = 0; led_red_toggle(); }
 }
 
+static void buttons_init(void)
+{
+  gpio_init_type gi;
+  crm_periph_clock_enable(CRM_GPIOC_PERIPH_CLOCK, TRUE);
+  gpio_default_para_init(&gi);
+  gi.gpio_pins = BTN_OUT | BTN_IN;
+  gi.gpio_mode = GPIO_MODE_INPUT;
+  gi.gpio_pull = GPIO_PULL_UP;                   /* pressed = low */
+  gpio_init(GPIOC, &gi);
+}
+
 void board_init(void)
 {
   delay_init();
   led_init();
+  buttons_init();
 }
 
 uint16_t buttons_raw(void)
@@ -92,7 +104,7 @@ uint16_t buttons_raw(void)
 
 void watchdog_start(void)
 {
-  *(volatile uint32_t *)0xE0042004u |= 0x100u;   /* DEBUG ctrl wdt_pause: stop while halted by SWD */
+  debug_periph_mode_set(DEBUG_WDT_PAUSE, TRUE);  /* stop the watchdog while halted by SWD */
   wdt_register_write_enable(TRUE);
   wdt_divider_set(WDT_CLK_DIV_256);              /* LICK 30-60 kHz (typ 40; DS Table 29) / 256 */
   wdt_reload_value_set(2500u - 1u);              /* 16 s typ, 10.7-21 s over the LICK tolerance */

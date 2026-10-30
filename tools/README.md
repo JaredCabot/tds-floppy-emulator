@@ -30,9 +30,8 @@ start with `init`, `halt` or `reg`: put OpenOCD commands in a `-f` script.
 ## emulator over SWD (PowerShell, OpenOCD)
 | Tool | What |
 |---|---|
-| `fdstat.ps1 [-Steps N]` | Floppy status: uptime, INDEX/steps/selects, current track, load/store times, write counters, self-check counters (must be 0), track load/store trace, step log |
+| `fdstat.ps1 [-Steps N]` | Floppy status: uptime, INDEX/steps/selects, current track, load/store times, write counters, self-check counters (must be 0) |
 | `button.ps1 in\|out\|both\|status` | Press the DATA IN / DATA OUT / both buttons (update, or the status report) over SWD and report the result with its time; after an update it detects the restart, identifies the installed image and keeps the SWD tools' guard truthful, split into waiting, USB and internal flash; `status` shows version, build ID, density, stick-ready and the last transfer |
-| `gatelog.ps1` | First 64 write gates (track, ID/data fields decoded, visible) and first 64 steps since reset - used to debug formatting |
 | `reformat.ps1` | Erase the internal disk to a blank FAT12 volume and restart the firmware |
 | `tryread.ps1 [-Poke "..."]` | Raise DISK CHANGE (so the TDS re-reads the disk) and make the TDS access fd0:; optional extra OpenOCD pokes |
 | `busmon.cfg` | OpenOCD script: sample the floppy input pins for 60 s, log changes |

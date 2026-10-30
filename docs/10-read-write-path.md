@@ -77,9 +77,8 @@ tracks are not written at all. When a sector does wear out, the write-back
 gives up after 3 tries and the persistent fault (above) tells the user to
 rescue the files. A lifetime erase counter is not possible here: every DATA IN
 and DATA OUT erases the whole chip, counter included. `buffer_dbg_writebacks`
-counts journal writes since power-on (`tools/button.ps1 status`). An image from 1.0.0
-and before (marker `TDSFBUF1` or `GTKBUF01` in slot 0's spare area) is taken
-over as it is. `tools/reformat.ps1` re-formats over SWD.
+counts journal writes since power-on (`tools/button.ps1 status`).
+`tools/reformat.ps1` re-formats over SWD.
 
 ## Disk density: 720 KB DD and 1.44 MB HD (1.1.0)
 The internal disk has a density, as a real floppy does: **1.44 MB HD** (500
@@ -190,8 +189,7 @@ journal.) Each format track arrives as one
 write gate per revolution carrying all 18 IDs + data fields; the decoder files
 them by the IDs' sector numbers. The TDS's boot sector: OEM `TEK_TDS`, jump
 `E9 00 00`, standard 1.44 MB BPB (fatimg accepts it).
-`tools/format_test.py` runs it; `tools/gatelog.ps1` shows the first 64 write
-gates and steps (ID/data counts per gate).
+`tools/format_test.py` runs it.
 
 ## Read: MFM generated on the fly
 `mfm_track_byte(track, p)` describes byte p of the 12500-byte IBM track (gaps,

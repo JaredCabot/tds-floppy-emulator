@@ -29,6 +29,7 @@
 #define CMD_BYTE_PROG   0x02u
 #define CMD_AAI_WORD    0xADu   /* auto address increment word program */
 #define CMD_SECTOR_ERA  0x20u
+#define CMD_CHIP_ERA    0x60u
 #define CMD_RDSR        0x05u
 #define CMD_EWSR        0x50u
 #define CMD_WRSR        0x01u
@@ -103,15 +104,14 @@ static uint8_t read_status(void)
 
 /* Wait for the flash to finish an erase/program. Bounded so a stuck-busy status
  * (e.g. MISO floating high -> SR reads 0xFF -> BUSY always set) can't hang boot.
- * Returns true if it went idle, false on timeout. A 4KB sector erase is spec'd
+ * A timeout sets the sticky fault (spiflash_fault). A 4KB sector erase is spec'd
  * up to ~25 ms; each read_status() is several SPI bytes, so ~2M tries is ample. */
 static bool s_fault;                /* sticky: the flash stopped responding (spiflash_fault) */
 
-static bool wait_busy(void)
+static void wait_busy(void)
 {
   uint32_t t = 2000000u;
-  while(read_status() & SR_BUSY) { if(--t == 0) { s_fault = true; return false; } }
-  return true;
+  while(read_status() & SR_BUSY) { if(--t == 0) { s_fault = true; return; } }
 }
 
 bool spiflash_fault(void) { return s_fault; }
@@ -238,7 +238,7 @@ void spiflash_erase_chip(void)
 {
   wait_busy();                        /* like every other operation: a busy chip ignores WREN */
   cmd(CMD_WREN);
-  cmd(0x60);                          /* chip erase */
+  cmd(CMD_CHIP_ERA);
   wait_busy();
 }
 

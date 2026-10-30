@@ -40,9 +40,17 @@ static uint8_t fat_byte(uint32_t k)
 
 static void put16(uint8_t *p, uint16_t v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
 
+void testimg_blank_sector(uint32_t lba, uint8_t out[512], const char *label)
+{
+  memset(out, 0, 512);
+  if(lba == 0) fat12_boot_sector(out, false, label);
+  else if(lba == FAT1_LBA || lba == FAT1_LBA + FAT_SECTORS) { out[0] = 0xF0; out[1] = 0xFF; out[2] = 0xFF; }  /* clusters 0, 1 */
+  else if(lba == ROOT_LBA && label) { memcpy(out, label, 11); out[11] = 0x08; }   /* volume-label entry */
+}
+
 void testimg_sector(uint32_t lba, uint8_t dst[512])
 {
-  fat12_blank_sector(lba, dst, (lba == 0 || lba == ROOT_LBA) ? "TDSFLOPPY  " : NULL);
+  testimg_blank_sector(lba, dst, (lba == 0 || lba == ROOT_LBA) ? "TDSFLOPPY  " : NULL);
 
   if(lba >= FAT1_LBA && lba < FAT1_LBA + 2u * FAT_SECTORS)          /* both FATs */
   {

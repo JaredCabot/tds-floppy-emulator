@@ -21,12 +21,8 @@ _Static_assert(BUF_META_ADDR + SPIFLASH_SECTOR_SIZE <= UPD_STAGE_ADDR, "meta sec
 #define SLOT_SECTORS  3u
 #define CHUNK         256u                    /* per poll: a fraction of a ms of SPI work */
 
-/* "complete image" marker, in the meta sector. Earlier firmware kept it in
- * slot 0's spare area (LEGACY_*): such an image is taken over, not formatted. */
-static const char MARKER[8]         __attribute__((nonstring)) = "TDSFBUF2";
-static const char LEGACY_MARKER1[8] __attribute__((nonstring)) = "TDSFBUF1";
-static const char LEGACY_MARKER0[8] __attribute__((nonstring)) = "GTKBUF01";
-#define LEGACY_MARKER_ADDR  BUF_TRACK_SIZE
+/* "complete image" marker, in the meta sector (every release since 1.0.0). */
+static const char MARKER[8] __attribute__((nonstring)) = "TDSFBUF2";
 
 /* A write-back that gave up leaves this record in the meta sector: the fault
  * outlives a power cycle (the LED keeps showing it) until a full rebuild (DATA
@@ -364,13 +360,7 @@ void buffer_init(void)
 {
   if(!marker_ok())
   {
-    if(marker_at(LEGACY_MARKER_ADDR, LEGACY_MARKER1) || marker_at(LEGACY_MARKER_ADDR, LEGACY_MARKER0))
-    {                                          /* an image from earlier firmware: keep it, */
-      for(uint32_t a = BUF_JOURNAL_ADDR; a <= BUF_META_ADDR; a += SPIFLASH_SECTOR_SIZE)
-        spiflash_erase_sector(a);              /* clear the areas it did not use */
-      spiflash_program(BUF_META_ADDR, MARKER, sizeof MARKER);
-    }
-    else if(fatimg_valid((fatimg_read_t *)flpy_scratch(), &buffer_fatimg_io))
+    if(fatimg_valid((fatimg_read_t *)flpy_scratch(), &buffer_fatimg_io))
       marker_repair();                         /* never wipe a sound disk */
     else { buffer_format(); return; }          /* no complete image: blank, or a rebuild cut short */
   }

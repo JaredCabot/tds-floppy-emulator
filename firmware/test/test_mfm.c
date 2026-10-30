@@ -52,7 +52,7 @@ static void test_track_roundtrip(void)
 
   memset(back, 0, sizeof back);
   int good = mfm_decode_verify(g_mfm, n, back);
-  printf("decoded good sectors: %d / %d\n", good, MFM_SECTORS_PER_TRACK);
+  printf("decoded good sectors: %d / %u\n", good, MFM_SECTORS_PER_TRACK);
   CHECK(good == MFM_SECTORS_PER_TRACK, "all 18 sectors decode with valid CRCs");
   CHECK(memcmp(g_src, back, sizeof g_src) == 0, "decoded data matches source");
 
@@ -155,23 +155,23 @@ static void test_write_decoder(void)
 static void test_fat12(void)
 {
   uint8_t s[512];
-  fat12_blank_sector(0, s, "TDSFLOPPY  ");
+  testimg_blank_sector(0, s, "TDSFLOPPY  ");
   CHECK(s[510]==0x55 && s[511]==0xAA, "boot signature 55 AA");
   CHECK(s[21]==0xF0, "media descriptor F0");
   CHECK(s[11]==0x00 && s[12]==0x02, "512 bytes/sector");
   CHECK((s[19]|(s[20]<<8))==2880, "2880 total sectors");
   CHECK(memcmp(&s[54],"FAT12   ",8)==0, "FAT12 fs type string");
 
-  fat12_blank_sector(1, s, NULL);
+  testimg_blank_sector(1, s, NULL);
   CHECK(s[0]==0xF0 && s[1]==0xFF && s[2]==0xFF, "FAT1 reserved entries");
-  fat12_blank_sector(10, s, NULL);
+  testimg_blank_sector(10, s, NULL);
   CHECK(s[0]==0xF0 && s[1]==0xFF && s[2]==0xFF, "FAT2 reserved entries");
 
   FILE *f = fopen("build/blank144.img", "wb");
   if(f){
-    for(uint32_t lba=0; lba<FAT12_TOTAL_SECTORS; lba++){
-      fat12_blank_sector(lba, s, (lba? NULL : "TDSFLOPPY  "));
-      if(lba==19) fat12_blank_sector(19, s, "TDSFLOPPY  ");
+    for(uint32_t lba=0; lba<2880u; lba++){
+      testimg_blank_sector(lba, s, (lba? NULL : "TDSFLOPPY  "));
+      if(lba==19) testimg_blank_sector(19, s, "TDSFLOPPY  ");
       fwrite(s,1,512,f);
     }
     fclose(f);
@@ -216,6 +216,21 @@ static void test_testimg(void)
   if(f) { for(uint32_t lba = 0; lba < 2880; lba++) { testimg_sector(lba, s); fwrite(s, 1, 512, f); } fclose(f); }
 }
 
+/* the root directory's regular files, in order (the walk skips folders) */
+static bool next_root_file(fatimg_read_t *r, fatimg_dir_t *d, fatimg_file_t *f)
+{
+  while(fatimg_dir_next(r, d, f)) if(!(f->attr & FATIMG_ATTR_DIR)) return true;
+  return false;
+}
+static bool root_empty(const fatimg_io_t *io)
+{
+  static fatimg_read_t r;
+  fatimg_dir_t d; fatimg_file_t f;
+  if(!fatimg_open(&r, io)) return true;
+  fatimg_dir_root(&d);
+  return !fatimg_dir_next(&r, &d, &f);
+}
+
 /* ---- fatimg: build an image the way data-in will, read it back the way
  * data-out will. The RAM "flash" only allows 1->0 bit changes, like the SST25:
  * programming anything twice or onto non-erased bytes shows up as corruption. */
@@ -258,7 +273,7 @@ static void test_fatimg(void)
     }
     if(f == 3) { uint32_t dummy; CHECK(fatimg_alloc(&b, 3000, &dummy), "alloc (abandoned copy)"); }
     char name[12];
-    snprintf(name, sizeof name, "FILE%d   BIN", f);
+    snprintf(name, sizeof name, "FILE%u   BIN", f);
     if(f == 3) continue;                           /* simulate a failed copy: never committed */
     fatimg_commit(&b, name, sizes[f], 0x5A21, 0x6000);
   }
@@ -272,8 +287,10 @@ static void test_fatimg(void)
   static fatimg_read_t r;
   fatimg_file_t fi;
   CHECK(fatimg_open(&r, &io), "open built image");
+  fatimg_dir_t d;
+  fatimg_dir_root(&d);
   unsigned found = 0, bad = 0;
-  while(fatimg_next_file(&r, &fi))
+  while(next_root_file(&r, &d, &fi))
   {
     unsigned f = (unsigned)(fi.name83[4] - '0');
     uint32_t got = 0;
@@ -288,7 +305,7 @@ static void test_fatimg(void)
   }
   printf("fatimg read-back: %u files (expect %u), %u bad bytes\n", found, nf - 1, bad);
   CHECK(found == nf - 1 && bad == 0, "every committed file reads back exactly");
-  CHECK(!fatimg_is_empty(&io), "is_empty false with files");
+  CHECK(!root_empty(&io), "is_empty false with files");
 
   /* capacity: 2847 clusters; a full disk must refuse the next file */
   fatimg_build_begin(&b, &io, false);
@@ -301,7 +318,7 @@ static void test_fatimg(void)
   memset(g_img, 0xFF, sizeof g_img);
   fatimg_build_begin(&b, &io, false);
   fatimg_finish(&b);
-  CHECK(fatimg_is_empty(&io), "freshly built image is empty");
+  CHECK(root_empty(&io), "freshly built image is empty");
 
   /* corrupt chain (loop) must not hang a reader that bounds by size */
   CHECK(fatimg_next_cluster(&r, 0) == 0 && fatimg_next_cluster(&r, 4000) == 0, "out-of-range clusters end the chain");
@@ -391,12 +408,12 @@ static void test_fatimg_dirs(void)
   CHECK(fatimg_chain_len(&r, 2020, 10) == 1, "short chain detected (corrupt file)");
   CHECK(fatimg_chain_len(&r, 2000, 10) == 2, "two-cluster chain length");
   CHECK(fatimg_chain_len(&r, 2010, 50) == 50, "looped chain bounded by the limit");
-  CHECK(!fatimg_is_empty(&io), "a disk with folders is not empty");
+  CHECK(!root_empty(&io), "a disk with folders is not empty");
 
   memset(g_img, 0xFF, sizeof g_img);                    /* a folder alone is not empty either */
   fatimg_build_begin(&b, &io, false); fatimg_finish(&b);
   dirent(root, "ONLYDIR    ", 0x10, 2000, 0);
-  CHECK(!fatimg_is_empty(&io), "a disk holding only a folder is not empty");
+  CHECK(!root_empty(&io), "a disk holding only a folder is not empty");
 }
 
 /* 8.3 names for exFAT / long-named stick files (Windows-style numeric tails) */
@@ -625,8 +642,10 @@ static void test_fatimg_dd(void)
         "fatimg_fat_entry: outside 2..max_cl reads as bad, never free");
   fatimg_open(&r, &io);
   fatimg_file_t f;
+  fatimg_dir_t rd;
+  fatimg_dir_root(&rd);
   unsigned nf = 0, bad = 0;
-  while(fatimg_next_file(&r, &f))
+  while(next_root_file(&r, &rd, &f))
   {
     fatimg_pos_t p;
     uint32_t lba, n, at = 0;

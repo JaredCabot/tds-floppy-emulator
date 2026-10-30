@@ -55,17 +55,6 @@ volatile char     dbg_name[68] __attribute__((aligned(4)));
 volatile uint32_t dbg_fw_version;          /* set in main(): SWD-readable version */
 volatile uint32_t dbg_button, dbg_xfer_result, dbg_xfer_count, dbg_usb_ready;
 
-static void buttons_init(void)
-{
-  gpio_init_type gi;
-  crm_periph_clock_enable(CRM_GPIOC_PERIPH_CLOCK, TRUE);
-  gpio_default_para_init(&gi);
-  gi.gpio_pins = BTN_OUT | BTN_IN;
-  gi.gpio_mode = GPIO_MODE_INPUT;
-  gi.gpio_pull = GPIO_PULL_UP;
-  gpio_init(GPIOC, &gi);
-}
-
 static uint32_t s_blinks;                  /* LED result pattern: toggles left */
 static uint32_t s_blink_ms = 80;           /* ... and its toggle period */
 static bool s_blink_new;                   /* a pattern was just set: start it now */
@@ -128,7 +117,6 @@ int main(void)
   system_clock_config();
   nvic_priority_group_config(NVIC_PRIORITY_GROUP_4);
   board_init();
-  buttons_init();
   dbg_reset_cause = CRM->ctrlsts;          /* why we started (a watchdog reset shows here) */
   CRM->ctrlsts |= 1u << 24;                /* rstfc: clear the reset flags */
   watchdog_start();

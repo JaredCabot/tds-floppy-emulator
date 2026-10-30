@@ -149,27 +149,6 @@ bool fatimg_open(fatimg_read_t *r, const fatimg_io_t *io)
   return r->data_lba < total;
 }
 
-bool fatimg_next_file(fatimg_read_t *r, fatimg_file_t *f)
-{
-  while(r->dir_index < r->root_entries)
-  {
-    uint32_t off = (uint32_t)r->dir_index++ * 32u;
-    const uint8_t *e = cached(r, r->root_lba + off / FATIMG_SECTOR) + off % FATIMG_SECTOR;
-    if(e[0] == 0x00) { r->dir_index = r->root_entries; return false; }  /* end of directory */
-    if(e[0] == 0xE5 || e[0] == 0x2E) continue;      /* deleted, dot entries */
-    if((e[11] & 0x0F) == 0x0F || (e[11] & 0x18)) continue;   /* LFN, volume label, directory */
-    memcpy(f->name83, e, 11);
-    if(f->name83[0] == 0x05) f->name83[0] = (char)0xE5;
-    f->attr = e[11];
-    f->time = rd16(&e[22]);
-    f->date = rd16(&e[24]);
-    f->first_cl = rd16(&e[26]);
-    f->size = rd32(&e[28]);
-    return true;
-  }
-  return false;
-}
-
 uint16_t fatimg_fat_entry(fatimg_read_t *r, uint16_t cl)
 {
   if(cl < 2 || cl > r->max_cl) return 0xFF7;       /* outside the volume */
@@ -274,16 +253,6 @@ uint32_t fatimg_chain_len(fatimg_read_t *r, uint16_t first_cl, uint32_t limit)
   uint32_t n = 0;
   for(uint16_t cl = first_cl; cl >= 2 && cl <= r->max_cl && n < limit; cl = fatimg_next_cluster(r, cl)) n++;
   return n;
-}
-
-bool fatimg_is_empty(const fatimg_io_t *io)
-{
-  static fatimg_read_t r;                           /* 540 B: keep off the stack */
-  fatimg_file_t f;
-  fatimg_dir_t d;
-  if(!fatimg_open(&r, io)) return true;
-  fatimg_dir_root(&d);
-  return !fatimg_dir_next(&r, &d, &f);              /* a file or a directory: not empty */
 }
 
 bool fatimg_valid(fatimg_read_t *r, const fatimg_io_t *io)

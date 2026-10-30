@@ -27,7 +27,6 @@
 #define MFM_SECTORS_PER_TRACK  18u
 #define MFM_SECTOR_SIZE        512u
 #define MFM_TRACK_SIZE         (MFM_SECTORS_PER_TRACK * MFM_SECTOR_SIZE)  /* 9216 */
-#define MFM_TRACK_DATA_BYTES   12500u
 #define MFM_TRACK_MAX_BYTES    25600u  /* encoded (2 bytes per data byte) + headroom */
 
 /* Track geometry. HD (1.44 MB) and DD (720 KB) share 300 RPM, 512-byte
@@ -73,7 +72,6 @@ size_t mfm_encode_track(const mfm_track_t *t, uint8_t *out, size_t out_cap);
 /* Data-byte offset of the start of sector s (0..17): its ID sync (12 x 00).
  * Used to find which sector a write lands in from the rotational position. */
 #define MFM_TRACK_PRE      146u     /* gap4a 80 + sync 12 + IAM 4 + gap1 50 */
-#define MFM_SECTOR_STRIDE  658u     /* ID 22 + gap2 22 + data 530 + gap3 84 */
 
 /* ---- write side (streaming decoder) ---- */
 typedef void (*mfm_field_fn)(uint8_t mark, const uint8_t *field, unsigned len, void *ctx);

@@ -119,7 +119,7 @@ static bool cancelled(void)
   if(xfer_dbg_cancel_at && xfer_dbg_bytes >= xfer_dbg_cancel_at) s_cancelled = true;
   else if(buttons_raw() & s_cancel_btn)
   {
-    if(!s_press_ms) s_press_ms = flpy_dbg_ms | 1u;
+    if(!s_press_ms) s_press_ms = flpy_dbg_ms | 1u;   /* | 1: never 0, which means "not pressed" */
     else if(flpy_dbg_ms - s_press_ms >= CANCEL_PRESS_MS) s_cancelled = true;
   }
   else s_press_ms = 0;
@@ -141,7 +141,9 @@ static int name_cmp(const char *a, const char *b)
 }
 static int same_name(const char *a, const char *b) { return name_cmp(a, b) == 0; }
 
-/* Alphabetically next regular file after 'after' in the stick's root. */
+/* Alphabetically next regular file after 'after' in the stick's root.
+ * ponytail: a full directory scan per file, O(n^2) per page; fine to the 224
+ * files a page can hold. Upgrade: a sorted name index, once RAM allows one. */
 static int next_file(const char *after, FILINFO *best)
 {
   static FILINFO fi;                  /* static: ~600 B kept off the 4 KB stack. Not reentrant: */
@@ -172,7 +174,7 @@ static xfer_result_t copy_in(fatimg_build_t *b, const FILINFO *fi, const char n8
   UINT got;
   strcpy(path, "0:/");
   strcat(path, sfn(fi));
-  if(!fatimg_alloc(b, fi->fsize, &lba)) return XFER_USB_ERROR;
+  if(!fatimg_alloc(b, fi->fsize, &lba)) return XFER_BAD_IMAGE;      /* fatimg_fits() said yes: the builder is inconsistent */
   if(f_open(&s_fil, path, FA_READ) != FR_OK) return XFER_USB_ERROR;   /* (path no longer needed) */
   for(uint32_t left = fi->fsize; left; )
   {
@@ -204,9 +206,11 @@ static bool disk_ok(uint16_t nfiles)
 {
   fatimg_read_t *r = &s_ws->r;                       /* (shares memory with the builder: done) */
   fatimg_file_t f;
+  fatimg_dir_t d;
   unsigned n = 0;
   if(!fatimg_open(r, &buffer_fatimg_io)) return false;
-  while(fatimg_next_file(r, &f))
+  fatimg_dir_root(&d);
+  while(fatimg_dir_next(r, &d, &f))                   /* DATA IN makes no folders */
   {
     uint32_t need = fatimg_clusters_for(r, f.size);
     if(fatimg_chain_len(r, f.first_cl, need) < need) return false;
@@ -466,7 +470,6 @@ xfer_result_t xfer_out(void)
 /* ---- status report (both buttons, no UPDATE.UPD; docs/13, status.h) ---- */
 
 extern volatile uint32_t dbg_fw_build, dbg_reset_cause;
-extern volatile uint32_t buffer_dbg_writebacks, buffer_dbg_recovered, buffer_dbg_marker_repaired;
 static const char *s_last_what, *s_last_res;
 static uint32_t s_last_files, s_last_bytes;
 

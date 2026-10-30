@@ -23,4 +23,8 @@ static inline uint8_t testimg_pattern(uint32_t f)
 /* Fill dst with logical sector lba of the test image. */
 void testimg_sector(uint32_t lba, uint8_t dst[512]);
 
+/* Logical sector lba of a blank 1.44 MB volume (boot sector, FAT reserved
+ * entries, a volume-label entry in the root when label is set, else zeros). */
+void testimg_blank_sector(uint32_t lba, uint8_t dst[512], const char *label);
+
 #endif /* TESTIMG_H */

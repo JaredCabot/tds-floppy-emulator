@@ -14,7 +14,6 @@
  * (asserted). Geometry: 80 cylinders, 2 heads, 18 x 512 B, 300 RPM.
  */
 
-#define FLPY_CYLINDERS   80u      /* the disk (what the file system uses) */
 /* How far the head can step. Real 3.5" mechanisms reach a few cylinders past
  * 79, and the TDS relies on it: its format covers cylinders 0..80 (two passes,
  * 40->80 then 40->0) and verifies cylinder 80. Clamping at 79 made it fail.
@@ -22,8 +21,6 @@
  * the space of cylinders 81-82 holds the write-back journal (buffer.h). */
 #define FLPY_CYL_LIMIT   81u
 #define FLPY_HEADS       2u
-#define FLPY_SECTORS     18u
-#define FLPY_SECTOR_SIZE 512u
 
 /* Set up the bus. Call after buffer_init(). */
 void flpy_init(void);
@@ -49,8 +46,6 @@ bool flpy_eject(bool (*abort)(void));   /* abort (may be NULL): stop waiting ear
 void flpy_insert(void);
 /* No disk at all, at once (boot: the buffer flash failed its self-test). */
 void flpy_no_disk(void);
-/* Host not using the drive and nothing waiting to be written back. */
-bool flpy_idle(void);
 
 /* 9 KB of RAM (the spare track buffer) that other code may borrow while the
  * disk is ejected, or before flpy_init(); NULL otherwise. */
@@ -59,9 +54,5 @@ void *flpy_scratch(void);
 /* The other track buffer (FLPY_SCRATCH_SIZE bytes), also idle while the disk
  * is ejected: flpy_insert() reloads the track. NULL while in use. */
 void *flpy_scratch2(void);
-
-uint8_t flpy_current_cyl(void);
-uint8_t flpy_current_head(void);
-bool    flpy_selected(void);
 
 #endif /* FLOPPY_H */

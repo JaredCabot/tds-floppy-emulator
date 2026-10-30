@@ -53,6 +53,10 @@ written last**, so a half-written app is never started), verify, retry up to
 3 times. Then start the app if its vector table is sane; otherwise blink a fast
 double-flash forever (recover over SWD).
 
+The staging area is in the SPI flash, so a unit whose SPI flash has failed (the
+flash-fault LED pattern, or no JEDEC ID in the status report) cannot take an
+update from the stick either: it is reflashed over SWD.
+
 **Acknowledge:** at startup the application withdraws the record once the
 installed app *is* the staged image. So the record lives exactly until the new
 firmware has started once: long enough to repair an interrupted install, and

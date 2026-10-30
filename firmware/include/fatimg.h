@@ -18,7 +18,7 @@
  * free). fatimg_finish() writes the boot sector, both FATs (generated from the
  * committed extents) and clears the rest of the root directory.
  *
- * READ (image -> stick): fatimg_open() checks the BPB; fatimg_next_file()
+ * READ (image -> stick): fatimg_open() checks the BPB; fatimg_dir_next()
  * walks the root directory; fatimg_next_cluster() follows a FAT12 chain. All
  * reads are bounds-checked so a corrupt image can't loop forever.
  */
@@ -78,7 +78,6 @@ typedef struct {
   fatimg_io_t io;
   uint16_t fat_lba, root_lba, root_entries, data_lba, max_cl;
   uint8_t  spc, media;                 /* sectors per cluster (1 HD, 2 DD), media byte */
-  uint16_t dir_index;                  /* iterator position */
   uint32_t cache_lba;                  /* sector cache for FAT/dir reads */
   uint8_t  cache[FATIMG_SECTOR];
 } fatimg_read_t;
@@ -92,8 +91,6 @@ typedef struct {
 
 /* false if the image doesn't look like a sane 512 B/sector FAT12 volume. */
 bool fatimg_open(fatimg_read_t *r, const fatimg_io_t *io);
-/* Next regular file in the root directory (skips deleted, volume, dirs, LFN). */
-bool fatimg_next_file(fatimg_read_t *r, fatimg_file_t *f);
 
 /* ---- directory walk (root and subdirectories) ----
  * The scope can make directories on the floppy (FILESystem:MKDir), so anything
@@ -135,8 +132,6 @@ uint16_t fatimg_fat_entry(fatimg_read_t *r, uint16_t cl);
 uint16_t fatimg_next_cluster(fatimg_read_t *r, uint16_t cl);
 /* LBA of a data cluster (1 sector per cluster on 1.44 MB; spc handled). */
 uint32_t fatimg_cluster_lba(const fatimg_read_t *r, uint16_t cl);
-/* true if the root directory holds no files and no subdirectories */
-bool fatimg_is_empty(const fatimg_io_t *io);
 /* true if the image holds a sound 1.44 MB FAT12 volume: a valid boot sector and
  * both FATs starting with the media descriptor. (Before wiping a disk because a
  * marker is missing, look whether there is anything to wipe.) */
