@@ -27,6 +27,10 @@ start with `init`, `halt` or `reg`: put OpenOCD commands in a `-f` script.
 (the manual lists it for the 500C/700C only). Use `SAVe:SETUp` /
 `SAVe:WAVEform` to make the scope write files.
 
+**The TDS 694C misses a `FILESystem:READFile` sent right after the previous one**
+(no reply, `Query UNTERMINATED` in `ALLEV?`; about every second read). The tools
+pause 1 s before each `READFile`. A `*OPC?` in between does not help.
+
 ## emulator over SWD (PowerShell, OpenOCD)
 | Tool | What |
 |---|---|

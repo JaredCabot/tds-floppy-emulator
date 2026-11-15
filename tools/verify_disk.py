@@ -6,7 +6,7 @@ from the 12 KB track slots, walks the FAT12 root directory, and compares each
 file with hd0:/<name> read over GPIB. Reports bad sectors by file and by LBA.
 Usage: python tools/verify_disk.py [--no-dump]   (--no-dump reuses the last dump)
 """
-import os, struct, subprocess, sys
+import os, struct, subprocess, sys, time
 import pyvisa
 import os as _os, sys as _sys; _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
 import benchlock; benchlock.acquire(_os.path.basename(__file__))   # one bench tool at a time
@@ -48,6 +48,7 @@ for i in range(0, len(root), 32):
         chain.append(c)
         c = fe(c)
     data = b"".join(img[(33 + x - 2) * 512:(33 + x - 1) * 512] for x in chain)[:size]
+    time.sleep(1)   # a TDS 694C misses a READFile sent right after the previous one
     tds.write(f'FILESystem:READFile "hd0:/{name}"')
     try:
         ref = tds.read_raw()

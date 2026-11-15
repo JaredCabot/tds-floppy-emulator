@@ -24,6 +24,7 @@ def q(c):
 
 
 def readfile(path):
+    time.sleep(1)   # a TDS 694C misses a READFile sent right after the previous one
     s.write(f'FILESystem:READFile "{path}"')
     try:
         return s.read_raw()          # reads until the TDS asserts END
@@ -67,16 +68,20 @@ for _, _, f in items:
 
 print("3. write-back, reset emulator, read from the disk again")
 time.sleep(3)
-st = subprocess.run(["powershell", "-ExecutionPolicy", "Bypass", "-File", os.path.join(ROOT, "tools", "fdstat.ps1"),
-                     "-Steps", "0"], capture_output=True, text=True).stdout.splitlines()
+st = subprocess.run(["powershell", "-ExecutionPolicy", "Bypass", "-File", os.path.join(ROOT, "tools", "fdstat.ps1")],
+                    capture_output=True, text=True).stdout.splitlines()
 print("   emulator before reset:", *st[:2], sep="\n     ")
 subprocess.run(["openocd", "-f", "interface/stlink.cfg", "-f", "target/artery/at32f4x.cfg",
                 "-c", "init; reset run; exit"], cwd=os.path.join(ROOT, "firmware"), capture_output=True)
 time.sleep(3)
 s.write('FILESystem:CWD "hd0:/"'); s.write('FILESystem:CWD "fd0:/"')
-print("   fd0 DIR after reset:", q("FILESystem:DIR?"), "|", q("ALLEV?"))
+fd0_dir = q("FILESystem:DIR?")
+print("   fd0 DIR after reset:", fd0_dir, "|", q("ALLEV?"))
 for _, _, f in items:
     results.append(same(f"{f} fd0 (from disk) vs hd0", readfile(f"fd0:/{f}"), ref[f]))
-results.append(same("TEST.BIN intact", readfile("fd0:/TEST.BIN"), testbin()))
+if '"TEST.BIN"' in fd0_dir:                   # the test image only, not a freshly formatted disk
+    results.append(same("TEST.BIN intact", readfile("fd0:/TEST.BIN"), testbin()))
+else:
+    print("   TEST.BIN: not on this disk, skipped")
 s.write("ACQuire:STATE RUN")
 print("RESULT:", "PASS" if all(results) else "FAIL")

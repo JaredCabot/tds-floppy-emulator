@@ -9,6 +9,7 @@ s = pyvisa.ResourceManager().open_resource(__import__("os").environ.get("TDS_ADD
 s.timeout = 90000
 for path in [a for a in sys.argv[1:] if not a.startswith("--")]:
     t = time.time()
+    time.sleep(1)   # a TDS 694C misses a READFile sent right after the previous one
     s.write(f'FILESystem:READFile "{path}"')
     try:
         d = s.read_raw()

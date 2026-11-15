@@ -14,6 +14,7 @@ References go to captures/dirtest/.
 import os
 import subprocess
 import sys
+import time
 
 import pyvisa
 
@@ -38,6 +39,7 @@ def scope():
 
 
 def readfile(s, path):
+    time.sleep(1)   # a TDS 694C misses a READFile sent right after the previous one
     s.write(f'FILESystem:READFile "fd0:/{path}"')
     return s.read_raw()
 
