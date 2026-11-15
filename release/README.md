@@ -2,8 +2,8 @@
 
 | File | Firmware | Build ID | Size | SHA-256 |
 |---|---|---|---|---|
-| `tdsfloppy_install.hex` | 1.2.0 | `1c27c478` | 133,621 bytes | `c3eeafb19c4d53ba14a7985e2fe69ab5c2feaaede94e662c3bf27f58cfe983f7` |
-| `UPDATE.UPD` | 1.2.0 | `1c27c478` | 44,324 bytes | `e5572dd42f79856e3d67afb98a094a32a209734cc645fe349c88fc9c92f2a63c` |
+| `tdsfloppy_install.hex` | 1.2.1 | `cfee2dcf` | 133,007 bytes | `7bac425f72616d11d0ef0acb2d86ccc19843d1d087027069503ef0550bb7e6d5` |
+| `UPDATE.UPD` | 1.2.1 | `cfee2dcf` | 44,108 bytes | `48a5a1d56f3a808c0dbec02207d5fd7aff0666cb275f7445df0b9a35962b340c` |
 
 These are also attached to each release on the
 [Releases page](https://github.com/JaredCabot/tds-floppy-emulator/releases); the
