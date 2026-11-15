@@ -8,9 +8,10 @@ from the original source where it is still available.
 
 | File | Owner | Original source | SHA-256 |
 |---|---|---|---|
-| `Artery_ISP_Programmer_V2.0.26.zip` | Artery Technology | [arterychip.com](https://www.arterychip.com) | `7f89c72be844e1948b6711e67f1f932daef797bf89386546d37a9c9e0ce9b0f0` |
+| `Artery_ISP_Multi-Port_Programmer_V2.0.27.zip` | Artery Technology | [arterychip.com](https://www.arterychip.com) | `c98edb42cbfed345446ed0c3720694760e4dce8e38f9476b8ce091d9fa07b7ed` |
 
-**Artery ISP Programmer V2.0.26** (Windows) programs AT32 microcontrollers
+**Artery ISP Multi-Port Programmer V2.0.27** (Windows; called Artery ISP
+Programmer up to V2.0.26, same tool) programs AT32 microcontrollers
 through their built-in bootloader. It is used once, to remove the factory read
 protection and load `release/tdsfloppy_install.hex` over USB-DFU (manual page
 2-1, [docs/08](../docs/08-unlock-and-flash-via-isp.md)). The package includes

@@ -27,6 +27,9 @@ gets a new version (docs/06). The build ID of each release is in
 ### Documentation
 - **Verified on a TDS 694C** (firmware v6.4e): first installation on a new
   unit, format, saves, and DATA IN / DATA OUT round trips byte-identical.
+- The archived Artery ISP Programmer in `third-party/` is now V2.0.27,
+  which Artery renamed Artery ISP Multi-Port Programmer. It is the same tool;
+  the new version adds AT32F435/437 parts. The manuals' steps are unchanged.
 
 ## [1.2.0] - 2026-09-29
 
