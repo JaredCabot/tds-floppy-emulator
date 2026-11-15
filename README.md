@@ -13,8 +13,9 @@ It reproduces the stock "buffer" workflow (the scope sees a 1.44 MB or 720 KB
 floppy whose contents live in the unit's SPI flash, and a USB stick moves files
 in and out) with better reliability and a few improvements. Written from the
 observable behaviour, the drive specification and bench measurements.
-**Status:** working on a **TDS 794D** (firmware v8.0e) and a **TDS 784D**
-(firmware v7.4e), each with its own emulator. Read, write, format, USB
+**Status:** working on a **TDS 794D** (firmware v8.0e), a **TDS 784D**
+(firmware v7.4e) and a **TDS 694C** (firmware v6.4e), each with its own
+emulator. Read, write, format, USB
 transfers, the buttons and LED, the first installation on a factory unit and
 the update from an earlier version are verified on the hardware: every file
 saved by the scope reads back byte-identical, through the internal disk and a
@@ -93,7 +94,7 @@ device needs:
 - for DATA IN and DATA OUT, a FAT12 disk: a device that writes its own disk
   format can still use the emulator as a drive, but not the USB transfers.
 
-It has only been tested on the TDS 794D and TDS 784D. Reports from other
+It has only been tested on the TDS 794D, TDS 784D and TDS 694C. Reports from other
 devices, working or not, are welcome as GitHub issues.
 
 ## Improvements over the stock firmware

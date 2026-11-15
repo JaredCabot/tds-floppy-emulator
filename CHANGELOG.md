@@ -6,6 +6,28 @@ gets a new version (docs/06). The build ID of each release is in
 [release/README.md](release/README.md); downloads are on the
 [Releases page](https://github.com/JaredCabot/tds-floppy-emulator/releases).
 
+## [1.2.1] - 2026-11-15
+
+### Fixed
+- **Two timing races on the floppy interface.** The 1 ms timer that ends the
+  INDEX pulse, the seek-complete delay and the motor spin-up could overwrite a
+  value the step or write-gate interrupt had just set, ending one of them
+  early. Write data sent while the emulator was not selected, had no disk or
+  was write-protected was kept and could be read as the start of the next
+  write; it is now discarded. Neither has been seen to cause a fault: the
+  scopes do not write to a drive that is not ready.
+- A DATA IN that runs out of room part-way through a file, which the size
+  check beforehand should rule out, now reports a bad image instead of a USB
+  error.
+
+### Changed
+- About 1 KB of development-only debug logging and some unused code removed,
+  leaving more RAM for future features.
+
+### Documentation
+- **Verified on a TDS 694C** (firmware v6.4e): first installation on a new
+  unit, format, saves, and DATA IN / DATA OUT round trips byte-identical.
+
 ## [1.2.0] - 2026-09-29
 
 ### Added
@@ -106,6 +128,7 @@ First release.
 - Watchdog, persistent flash-fault indication, build ID; the user manual
   TFE-0001-00 in the Tektronix house style.
 
+[1.2.1]: https://github.com/JaredCabot/tds-floppy-emulator/releases/tag/v1.2.1
 [1.2.0]: https://github.com/JaredCabot/tds-floppy-emulator/releases/tag/v1.2.0
 [1.1.0]: https://github.com/JaredCabot/tds-floppy-emulator/releases/tag/v1.1.0
 [1.0.0]: https://github.com/JaredCabot/tds-floppy-emulator/releases/tag/v1.0.0
